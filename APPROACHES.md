@@ -13,7 +13,7 @@ a plain tap (not just a held drag) — ruling out movement-batching and button-h
 **A real USB/Bluetooth mouse never reproduced either issue**, with or without the external
 display connected, which pinned it on our app specifically rather than a Desktop Mode quirk.
 
-### Theory: touch on the internal display steals global top-focus — ✅ FIX ATTEMPTED
+### Theory: touch on the internal display steals global top-focus — ✅ CONFIRMED FIXED
 Every gesture on this app's touchpad requires physically touching the phone's screen. Android's
 multi-display model tracks a global "top-focused" window/display (relevant to IME routing and
 dismiss-on-focus-loss listeners on other windows). A real mouse never touches the phone's
@@ -29,7 +29,10 @@ fields of our own needing IME focus, so no downside expected for our own UI. The
 bottom sheet is a separate `Dialog` window and keeps its own default focusability, so its
 sliders/buttons are unaffected.
 
-**Not yet verified on physical hardware.**
+**Confirmed on-device**: fixed for the vast majority of apps tested. One app showed degraded
+text selection in desktop mode, but that reproduced even with the PixelTouchpad app closed and
+Shizuku not running — an unrelated quirk in that app's own Desktop Mode support, not something
+this project caused or can fix.
 
 ---
 
@@ -234,3 +237,5 @@ accumulator at all and only clamp a copy of it for the on-screen debug coordinat
 4. **`/proc/bus/input/devices` requires root** on Android 16
 5. **`/sys/class/input/*/device/name` isn't readable by shell** — must use `getevent -pl` instead
 6. **An infinite loop is sneaky** — it shows up as "the cursor doesn't move" even though reports are being sent (millions of reports with dx=0, dy=0)
+7. **Touching the phone screen can steal system focus from the external display** — any window that needs to receive touch but not act as the system's top-focused window should be `FLAG_NOT_FOCUSABLE`
+8. **When an app misbehaves in Desktop Mode, test with this app fully closed and Shizuku stopped** — the fastest way to rule out whether it's this project's doing at all
