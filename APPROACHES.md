@@ -4,6 +4,35 @@ Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 �
 
 ---
 
+## Touching the phone screen dismisses focused/open UI on the external display
+
+**Symptoms**: re-selecting a point in an already-focused text field hid the keyboard; moving
+toward a submenu item in the desktop window-decoration menu closed the menu immediately. Both
+happened even with zero cursor movement (a stationary re-click of the exact same spot) and with
+a plain tap (not just a held drag) — ruling out movement-batching and button-hold theories.
+**A real USB/Bluetooth mouse never reproduced either issue**, with or without the external
+display connected, which pinned it on our app specifically rather than a Desktop Mode quirk.
+
+### Theory: touch on the internal display steals global top-focus — ✅ FIX ATTEMPTED
+Every gesture on this app's touchpad requires physically touching the phone's screen. Android's
+multi-display model tracks a global "top-focused" window/display (relevant to IME routing and
+dismiss-on-focus-loss listeners on other windows). A real mouse never touches the phone's
+screen at all, so it never disturbs this; our app touches it on every single interaction. That
+fits all the data: happens on any touch regardless of movement or click duration, never happens
+with a real mouse, and doesn't visibly affect plain content clicks (which mostly don't listen
+for focus loss the way text fields and dismissible menus do).
+
+**Fix**: `window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)` in `MainActivity`.
+The window still receives touch normally (this flag only blocks *keyboard/input* focus, not
+touch dispatch) but should no longer take system input focus when touched — we have no text
+fields of our own needing IME focus, so no downside expected for our own UI. The Settings
+bottom sheet is a separate `Dialog` window and keeps its own default focusability, so its
+sliders/buttons are unaffected.
+
+**Not yet verified on physical hardware.**
+
+---
+
 ## Quick-tap-then-hold regression — ✅ DISABLED BY DEFAULT
 
 After shipping quick-tap-then-hold (tap, release, press-and-hold the same spot to start a

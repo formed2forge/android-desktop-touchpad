@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.view.Display
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.TextView
@@ -111,6 +112,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Touching this window shouldn't steal system input focus away from whatever's
+        // focused on the external display (a text field's IME connection, an open menu,
+        // etc.) - we only ever need touch here, never keyboard/IME focus of our own.
+        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
