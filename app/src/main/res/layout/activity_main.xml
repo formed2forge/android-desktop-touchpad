@@ -27,7 +27,7 @@
             android:id="@+id/btnConnect"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Připojit"
+            android:text="Connect"
             android:backgroundTint="#0f3460"
             android:layout_marginBottom="16dp" />
 
@@ -40,7 +40,7 @@
                 android:id="@+id/statusText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Inicializace..."
+                android:text="Initializing..."
                 android:textSize="12sp"
                 android:textColor="#aaaaaa"
                 android:gravity="start"
@@ -67,7 +67,7 @@
         android:layout_marginEnd="8dp"
         android:src="@android:drawable/ic_menu_manage"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Nastavení"
+        android:contentDescription="Settings"
         android:alpha="0.4"
         android:visibility="gone" />
 

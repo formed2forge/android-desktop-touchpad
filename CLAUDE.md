@@ -98,5 +98,5 @@ See [BUILD.md](BUILD.md) for local build instructions (x86_64 Linux).
 ## User context
 - Martin, a Czech game developer (Godot, HTML games for kids)
 - Device: Pixel 8 Pro, Android 16
-- UI language: Czech
+- UI language: English (this fork's UI was translated from the upstream project's Czech)
 - Goal: control desktop mode on an external monitor without a physical mouse

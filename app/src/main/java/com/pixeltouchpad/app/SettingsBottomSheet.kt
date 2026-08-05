@@ -53,12 +53,12 @@ class SettingsBottomSheet : BottomSheetDialogFragment() {
         // Cursor sensitivity: 0.5 to 4.0, step 0.1 → max = 35
         cursorSeek.max = 35
         cursorSeek.progress = ((currentSensitivity - 0.5f) * 10).toInt().coerceIn(0, 35)
-        cursorLabel.text = "Kurzor: %.1f".format(currentSensitivity)
+        cursorLabel.text = "Cursor: %.1f".format(currentSensitivity)
 
         cursorSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, progress: Int, fromUser: Boolean) {
                 val value = 0.5f + progress * 0.1f
-                cursorLabel.text = "Kurzor: %.1f".format(value)
+                cursorLabel.text = "Cursor: %.1f".format(value)
                 if (fromUser) onSensitivityChanged?.invoke(value)
             }
             override fun onStartTrackingTouch(s: SeekBar?) {}

@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Nastavení"
+        android:text="Settings"
         android:textSize="18sp"
         android:textColor="#e94560"
         android:textStyle="bold"
@@ -20,7 +20,7 @@
         android:id="@+id/labelCursorSens"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Kurzor: 1.5"
+        android:text="Cursor: 1.5"
         android:textColor="#ffffff"
         android:textSize="14sp"
         android:layout_marginBottom="4dp" />
@@ -62,14 +62,14 @@
             android:id="@+id/btnDiagnose"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Diagnostika"
+            android:text="Diagnostics"
             android:backgroundTint="#e94560" />
 
         <Button
             android:id="@+id/btnDisconnect"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Odpojit"
+            android:text="Disconnect"
             android:layout_marginStart="8dp"
             android:backgroundTint="#16213e" />
     </LinearLayout>

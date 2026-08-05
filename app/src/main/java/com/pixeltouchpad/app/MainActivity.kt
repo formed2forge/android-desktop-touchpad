@@ -63,7 +63,7 @@ class MainActivity : AppCompatActivity() {
             inputService = null
             isServiceBound = false
             runOnUiThread {
-                updateStatus("Služba odpojena")
+                updateStatus("Service disconnected")
                 showSetupPanel()
             }
         }
@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity() {
                 if (grantResult == PackageManager.PERMISSION_GRANTED) {
                     bindInputService()
                 } else {
-                    updateStatus("Shizuku oprávnění zamítnuto")
+                    updateStatus("Shizuku permission denied")
                 }
             }
         }
@@ -99,7 +99,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (displayId == externalDisplayId) {
                     externalDisplayId = -1
-                    updateStatus("Externí displej odpojen")
+                    updateStatus("External display disconnected")
                     showSetupPanel()
                 }
             }
@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         if (Shizuku.pingBinder()) {
             startSetup()
         } else {
-            updateStatus("Spusť Shizuku a klikni na Připojit")
+            updateStatus("Start Shizuku and tap Connect")
         }
     }
 
@@ -234,7 +234,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startSetup() {
         if (!Shizuku.pingBinder()) {
-            updateStatus("Shizuku není spuštěno!\n\nOtevři Shizuku app a spusť službu.")
+            updateStatus("Shizuku isn't running!\n\nOpen the Shizuku app and start the service.")
             return
         }
 
@@ -242,7 +242,7 @@ class MainActivity : AppCompatActivity() {
             bindInputService()
         } else {
             Shizuku.requestPermission(SHIZUKU_PERMISSION_CODE)
-            updateStatus("Čekám na povolení Shizuku...")
+            updateStatus("Waiting for Shizuku permission...")
         }
     }
 
@@ -253,16 +253,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindInputService() {
-        updateStatus("Připojuji se k Shizuku službě...")
+        updateStatus("Connecting to Shizuku service...")
         try {
             Shizuku.bindUserService(userServiceArgs, serviceConnection)
         } catch (e: Exception) {
-            updateStatus("Chyba při připojení: ${e.message}")
+            updateStatus("Connection error: ${e.message}")
         }
     }
 
     private fun onServiceReady() {
-        updateStatus("Služba připojena. Hledám externí displej...")
+        updateStatus("Service connected. Looking for external display...")
         detectExternalDisplay()
     }
 
@@ -291,9 +291,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             showSetupPanel()
             updateStatus(
-                "Žádný externí displej nenalezen.\n" +
-                "Připoj monitor přes USB-C.\n\n" +
-                "Nalezené displeje:\n$displayInfo"
+                "No external display found.\n" +
+                "Connect the monitor via USB-C.\n\n" +
+                "Detected displays:\n$displayInfo"
             )
         }
     }
@@ -342,13 +342,13 @@ class MainActivity : AppCompatActivity() {
     private fun runDiagnose() {
         // Show setup panel for diagnostic output
         showSetupPanel()
-        updateStatus("Spouštím diagnostiku...")
+        updateStatus("Running diagnostics...")
         Thread {
             try {
-                val result = inputService?.diagnose(externalDisplayId) ?: "Služba není připojena"
+                val result = inputService?.diagnose(externalDisplayId) ?: "Service not connected"
                 runOnUiThread { updateStatus(result) }
             } catch (e: Exception) {
-                runOnUiThread { updateStatus("Diagnostika selhala: ${e.message}") }
+                runOnUiThread { updateStatus("Diagnostics failed: ${e.message}") }
             }
         }.start()
     }
