@@ -13,6 +13,12 @@ A minimal Android app that turns a phone's display into a virtual touchpad for c
 - Android 9+ (Pixel 8 with Android 15/16/17 ideal)
 - [Shizuku](https://github.com/RikkaApps/Shizuku/releases) installed and running
 - External display connected via USB-C
+- **"Universal cursor" turned OFF** — Settings → Connected devices → External displays →
+  (built-in display) → this toggle only appears when "Mirror built-in display" is off.
+  With it on, Android lets the system cursor roam across both the phone screen and the
+  external display, which fights with this app (the phone screen is a touch surface only —
+  there's nothing useful for a cursor to do there). Leave it off so the cursor stays
+  reliably on the external display.
 
 ## How it works
 

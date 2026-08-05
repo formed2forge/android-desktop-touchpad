@@ -100,9 +100,10 @@
 - Cursor movement is very slow/choppy when the pointer ends up on the phone's own (internal)
   display — impractical to use there. Low priority to fix directly: since the touchpad UI is
   fullscreen on the internal display, there's no legitimate reason for the cursor to ever be
-  there. Better fixed as a side effect of reliably pinning the cursor to the external display
-  (see the multi-display cursor routing investigation in `APPROACHES.md`) than by tuning
-  internal-display cursor speed.
+  there. Root cause of it landing there at all was tracked down to the "Universal cursor" OS
+  setting (see `APPROACHES.md`) — with it off (now documented as required in `README.md`),
+  the cursor doesn't reach the internal display in the first place, so this shouldn't come up
+  in normal use.
 
 ## Compatibility
 

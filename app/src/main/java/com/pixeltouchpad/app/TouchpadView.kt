@@ -251,8 +251,8 @@ class TouchpadView @JvmOverloads constructor(
                             val dy = rawDy * sensitivity
                             lastTouchX = event.getX(idx)
                             lastTouchY = event.getY(idx)
-                            cursorX = (cursorX + dx).coerceIn(0f, displayWidth - 1f)
-                            cursorY = (cursorY + dy).coerceIn(0f, displayHeight - 1f)
+                            cursorX += dx
+                            cursorY += dy
                             onCursorMove?.invoke(cursorX, cursorY)
                         }
                         drawTouchX = event.x
@@ -301,8 +301,8 @@ class TouchpadView @JvmOverloads constructor(
                             val dy = rawDy * sensitivity
                             lastTouchX = event.x
                             lastTouchY = event.y
-                            cursorX = (cursorX + dx).coerceIn(0f, displayWidth - 1f)
-                            cursorY = (cursorY + dy).coerceIn(0f, displayHeight - 1f)
+                            cursorX += dx
+                            cursorY += dy
                             onCursorMove?.invoke(cursorX, cursorY)
                         }
 
@@ -447,8 +447,13 @@ class TouchpadView @JvmOverloads constructor(
             canvas.drawText(gestureLabel, width / 2f, 60f, statusPaint)
         }
 
-        // Cursor coordinates
-        val coordText = "%.0f, %.0f".format(cursorX, cursorY)
+        // Cursor coordinates (clamped here only for display; the real tracked
+        // value is left unbounded so relative motion keeps flowing to the OS
+        // even while the cursor is transiting a display we don't control)
+        val coordText = "%.0f, %.0f".format(
+            cursorX.coerceIn(0f, displayWidth - 1f),
+            cursorY.coerceIn(0f, displayHeight - 1f)
+        )
         canvas.drawText(coordText, 20f, height - 20f, coordPaint)
     }
 }

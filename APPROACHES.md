@@ -112,6 +112,39 @@ exist — so the pointer falls back to the default (built-in) display.
   reflection can only be confirmed by actually running it on the Pixel 8 Pro. `diagnose()` now
   reports `uhidPhys` and `lastAssociationResult` for on-device debugging if it doesn't work.
 
+### "Universal cursor" setting (Settings → Connected devices → External displays → built-in
+display → toggle, only visible when "Mirror built-in display" is off) — ✅ ROOT CAUSE FOUND
+
+On-device matrix testing (connect-then-launch / launch-then-connect / toggle mirror mode
+while connected, × Universal cursor on/off) isolated the real cause:
+
+| | connect→launch | launch→connect | toggle mirror while connected |
+|---|---|---|---|
+| Universal cursor OFF | correct | correct | correct |
+| Universal cursor ON | stuck on internal display | stuck on internal (recoverable by swiping, see below) | stuck on internal |
+
+With Universal cursor OFF, Android places and keeps the cursor on the external display
+correctly in every case tested — no app code involved. With it ON, Android treats both
+displays as one continuous cursor space (matching the arrangement configured in Settings),
+and the cursor initially/repeatedly ends up on the internal display regardless of our
+`addUniqueIdAssociationByPort` call above — that association affects which display an input
+device's motion is attributed to, but not this separate OS-level "which display currently
+shows the roaming cursor" behavior.
+
+**Fix for now: document Universal cursor as required OFF** (see `README.md`) — sidesteps the
+problem entirely rather than fighting undocumented OS pointer-routing behavior.
+
+### Clamped cursor accumulator silently ate relative motion — ✅ FIXED
+While Universal cursor was ON, trying to swipe the cursor from the internal display back onto
+the external one worked for a while, then hit a hard stop "relative to swipe length." Cause:
+`TouchpadView.cursorX/cursorY` (an internal accumulator used only to compute the delta sent to
+`InputService.moveCursor`) was clamped to `[0, displayWidth/Height)` — the external display's
+bounds. Once the accumulator saturated at that boundary, further finger movement kept
+computing a delta of ~0 (since the clamped value stopped changing), even though the real OS
+cursor — currently elsewhere, in a combined multi-display coordinate space — hadn't reached
+any real boundary. UHID motion is inherently relative, so the fix was to stop clamping the
+accumulator at all and only clamp a copy of it for the on-screen debug coordinate readout.
+
 ---
 
 ## Key findings
