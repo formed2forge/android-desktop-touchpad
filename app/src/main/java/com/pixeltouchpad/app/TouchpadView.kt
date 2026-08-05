@@ -22,11 +22,13 @@ import kotlin.math.sqrt
  * - 2 finger tap (no movement): right click
  * - 2 finger same direction: scroll (natural direction, with momentum after lift)
  * - 2 finger pinch (distance changes): zoom (Ctrl+scroll)
- * - double-tap then hold: drag lock. The button stays down across touch sessions - move by
- *   touching and moving again, no need to hold continuously - until ended by another
- *   double-tap. See [enableDragLock]. Replaces the old two-finger hold+add-finger drag: this
- *   is deliberately a *double*-tap (same spot, quick succession) rather than "any touch soon
- *   after a tap," since the latter misfired on ordinary click-then-move-then-click usage.
+ * - double-tap then hold: drag. See [enableDragLock]. Replaces the old two-finger hold+add-
+ *   finger drag: this is deliberately a *double*-tap (same spot, quick succession) rather than
+ *   "any touch soon after a tap," since the latter misfired on ordinary click-then-move-then-
+ *   click usage. By default the button releases as soon as you lift the finger (ordinary
+ *   click-and-drag feel). With [endDragOnSingleTap] on, it instead persists across lift/re-
+ *   touch - move by touching and moving again, no need to hold continuously - until ended by a
+ *   single tap.
  * - 3 finger swipe L/R/U/D: back / recent / app drawer / notifications
  */
 class TouchpadView @JvmOverloads constructor(
@@ -41,6 +43,7 @@ class TouchpadView @JvmOverloads constructor(
     var sensitivity = 1.5f
     var scrollSensitivity = 0.08f
     var enableDragLock = true
+    var endDragOnSingleTap = false // false = release ends the drag; true = persist, end on a tap
     var naturalScrolling = true
     private val tapMaxDuration = 200L   // ms
     private val tapMaxDistance = 30f     // px
@@ -405,24 +408,19 @@ class TouchpadView @JvmOverloads constructor(
                     }
 
                     isDragMode -> {
-                        // Drag-locked: only a matching double-tap ends it (no lift-to-end, for now)
-                        if (wasQuickTap) {
-                            val gapOk = touchStartTime - lastQuickTapTime < doubleTapWindow
-                            val posOk = sqrt(
-                                (event.x - lastQuickTapX).let { it * it } +
-                                (event.y - lastQuickTapY).let { it * it }
-                            ) < tapMaxDistance
-                            if (gapOk && posOk) {
+                        if (endDragOnSingleTap) {
+                            // Persists across lift/re-touch; a single quick tap ends it, any
+                            // other release just pauses movement until the next touch.
+                            if (wasQuickTap) {
                                 isDragMode = false
-                                lastQuickTapTime = 0L
                                 onDragEnd?.invoke()
-                            } else {
-                                lastQuickTapTime = System.currentTimeMillis()
-                                lastQuickTapX = event.x
-                                lastQuickTapY = event.y
                             }
+                        } else {
+                            // Default: any release ends the drag immediately (ordinary
+                            // click-and-drag feel), tap or not.
+                            isDragMode = false
+                            onDragEnd?.invoke()
                         }
-                        // A non-quick release (real drag movement) leaves the lock as-is.
                     }
 
                     maxPointerCountInGesture == 2 && !twoFingerMoved && !isPinching -> {

@@ -61,7 +61,7 @@ PointerController (system cursor on the display)
 | 2-finger tap | right click | rightClick | UHID BTN_RIGHT (bit 1 = 0x02) |
 | 2 fingers same direction | scroll, natural direction, with momentum after lift | scroll | UHID REL_WHEEL + AC Pan (horizontal) |
 | 2-finger pinch | zoom | — | Ctrl+scroll (TBD) |
-| double-tap then hold, ends via another double-tap (toggle in Settings, see `enableDragLock`, default on) | drag lock | startDrag/endDrag | UHID button=1 hold, persists across touch sessions |
+| double-tap then hold; release to end by default, or a single tap to end (toggle in Settings, see `enableDragLock`/`endDragOnSingleTap`) | drag | startDrag/endDrag | UHID button=1 hold; persists across touch sessions only in single-tap-to-end mode |
 | 3 fingers left | Back | sendKeyEvent(4) | `input keyevent 4` |
 | 3 fingers right | Task manager | sendKeyEvent(187) | `input keyevent 187` |
 | 3 fingers up | App drawer | sendKeyEvent(284) | `input keyevent 284` |

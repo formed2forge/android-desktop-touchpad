@@ -32,9 +32,11 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_CURSOR_SENSITIVITY = "cursor_sensitivity"
         private const val KEY_SCROLL_SENSITIVITY = "scroll_sensitivity"
         private const val KEY_ENABLE_DRAG_LOCK = "enable_drag_lock"
+        private const val KEY_END_DRAG_ON_SINGLE_TAP = "end_drag_on_single_tap"
         private const val DEFAULT_CURSOR_SENS = 1.5f
         private const val DEFAULT_SCROLL_SENS = 0.08f
         private const val DEFAULT_ENABLE_DRAG_LOCK = true
+        private const val DEFAULT_END_DRAG_ON_SINGLE_TAP = false
     }
 
     private var inputService: IInputService? = null
@@ -148,6 +150,7 @@ class MainActivity : AppCompatActivity() {
         touchpadView.sensitivity = prefs.getFloat(KEY_CURSOR_SENSITIVITY, DEFAULT_CURSOR_SENS)
         touchpadView.scrollSensitivity = prefs.getFloat(KEY_SCROLL_SENSITIVITY, DEFAULT_SCROLL_SENS)
         touchpadView.enableDragLock = prefs.getBoolean(KEY_ENABLE_DRAG_LOCK, DEFAULT_ENABLE_DRAG_LOCK)
+        touchpadView.endDragOnSingleTap = prefs.getBoolean(KEY_END_DRAG_ON_SINGLE_TAP, DEFAULT_END_DRAG_ON_SINGLE_TAP)
 
         btnConnect.setOnClickListener { startSetup() }
         btnSettings.setOnClickListener { openSettings() }
@@ -378,7 +381,8 @@ class MainActivity : AppCompatActivity() {
         val sheet = SettingsBottomSheet.newInstance(
             touchpadView.sensitivity,
             touchpadView.scrollSensitivity,
-            touchpadView.enableDragLock
+            touchpadView.enableDragLock,
+            touchpadView.endDragOnSingleTap
         )
 
         sheet.onSensitivityChanged = { value ->
@@ -394,6 +398,11 @@ class MainActivity : AppCompatActivity() {
         sheet.onDragLockToggled = { enabled ->
             touchpadView.enableDragLock = enabled
             prefs.edit().putBoolean(KEY_ENABLE_DRAG_LOCK, enabled).apply()
+        }
+
+        sheet.onEndDragOnSingleTapToggled = { enabled ->
+            touchpadView.endDragOnSingleTap = enabled
+            prefs.edit().putBoolean(KEY_END_DRAG_ON_SINGLE_TAP, enabled).apply()
         }
 
         sheet.onDiagnoseClicked = {

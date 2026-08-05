@@ -4,6 +4,21 @@ Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 �
 
 ---
 
+## Double-tap-to-end felt unintuitive — reworked default ending behavior
+
+On-device feedback: ending a drag via a second matching double-tap felt unintuitive compared to
+just releasing the finger, which is the ordinary click-and-drag mental model.
+
+**New default**: release ends the drag immediately (any lift, tap or not) — the persist-across-
+touch-sessions design from the initial drag-lock implementation is no longer the default.
+**New toggle** (`endDragOnSingleTap`, off by default): restores that persistence (move by
+touching and moving again, no need to hold continuously), but ends it with a single tap instead
+of requiring a second double-tap — simpler to trigger deliberately than matching a full
+double-tap pair. Starting the drag (double-tap then hold) is unchanged in both modes; only how
+it ends differs.
+
+---
+
 ## Vertical scroll janky, horizontal smooth — ✅ FIXED (truncation, not an axis asymmetry)
 
 Confirmed on-device: new horizontal scroll felt smooth, existing vertical scroll still felt

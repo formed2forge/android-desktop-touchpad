@@ -60,6 +60,19 @@
         android:text="Drag (double-tap and hold)"
         android:textColor="#ffffff"
         android:textSize="14sp"
+        android:layout_marginBottom="8dp"
+        app:thumbTint="#e94560"
+        app:trackTint="#0f3460" />
+
+    <!-- Sub-option: how the drag ends -->
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/switchEndDragOnSingleTap"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:text="End drag with a single tap (instead of releasing)"
+        android:textColor="#cccccc"
+        android:textSize="13sp"
         android:layout_marginBottom="16dp"
         app:thumbTint="#e94560"
         app:trackTint="#0f3460" />
