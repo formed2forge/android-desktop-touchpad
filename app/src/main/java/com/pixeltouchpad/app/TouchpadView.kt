@@ -36,6 +36,7 @@ class TouchpadView @JvmOverloads constructor(
     var scrollSensitivity = 0.08f
     private val tapMaxDuration = 200L   // ms
     private val tapMaxDistance = 30f     // px
+    private val moveDeadzone = 3f        // px, raw finger jitter filter before cursor moves
     private val dragHoldTime = 250L     // ms before 1st finger counts as "hold"
     private val threeFingerSwipeThreshold = 100f // px minimum swipe
     private val pinchZoomThreshold = 30f // px change in finger distance
@@ -56,7 +57,6 @@ class TouchpadView @JvmOverloads constructor(
     private var touchStartTime = 0L
     private var activePointerCount = 0
     private var maxPointerCountInGesture = 0
-    private var hasMoved = false
 
     // Two-finger state
     private var isScrolling = false
@@ -142,7 +142,6 @@ class TouchpadView @JvmOverloads constructor(
                 isThreeFingerGesture = false
                 isDragMode = false
                 isPinching = false
-                hasMoved = false
                 twoFingerMoved = false
                 firstFingerStationary = false
                 gestureLabel = ""
@@ -163,7 +162,7 @@ class TouchpadView @JvmOverloads constructor(
                     )
 
                     // Check if first finger was held stationary = tap-and-drag
-                    if (elapsed > dragHoldTime && dist < tapMaxDistance && !hasMoved) {
+                    if (elapsed > dragHoldTime && dist < tapMaxDistance) {
                         isDragMode = true
                         gestureLabel = "DRAG"
                         onDragStart?.invoke()
@@ -254,13 +253,14 @@ class TouchpadView @JvmOverloads constructor(
 
                     !isScrolling && !isThreeFingerGesture && !isDragMode && event.pointerCount == 1 -> {
                         // Single-finger cursor movement
-                        val dx = (event.x - lastTouchX) * sensitivity
-                        val dy = (event.y - lastTouchY) * sensitivity
-                        lastTouchX = event.x
-                        lastTouchY = event.y
+                        val rawDx = event.x - lastTouchX
+                        val rawDy = event.y - lastTouchY
 
-                        if (abs(dx) > 0.5f || abs(dy) > 0.5f) {
-                            hasMoved = true
+                        if (abs(rawDx) > moveDeadzone || abs(rawDy) > moveDeadzone) {
+                            val dx = rawDx * sensitivity
+                            val dy = rawDy * sensitivity
+                            lastTouchX = event.x
+                            lastTouchY = event.y
                             cursorX = (cursorX + dx).coerceIn(0f, displayWidth - 1f)
                             cursorY = (cursorY + dy).coerceIn(0f, displayHeight - 1f)
                             onCursorMove?.invoke(cursorX, cursorY)
@@ -323,7 +323,7 @@ class TouchpadView @JvmOverloads constructor(
                         val distY = event.y - touchStartY
                         val dist = sqrt(distX * distX + distY * distY)
 
-                        if (elapsed < tapMaxDuration && dist < tapMaxDistance && !hasMoved) {
+                        if (elapsed < tapMaxDuration && dist < tapMaxDistance) {
                             onClick?.invoke(cursorX, cursorY)
                         }
                     }
@@ -336,7 +336,6 @@ class TouchpadView @JvmOverloads constructor(
                 isThreeFingerGesture = false
                 isDragMode = false
                 isPinching = false
-                hasMoved = false
                 gestureLabel = ""
                 drawTouchX = -1f
                 drawTouchY = -1f
