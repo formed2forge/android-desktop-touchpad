@@ -5,6 +5,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -21,6 +23,7 @@ import kotlin.math.sqrt
  * - 2 finger same direction: scroll
  * - 2 finger pinch (distance changes): zoom (Ctrl+scroll)
  * - 1 finger hold + 2nd finger added: drag (hold left button + move)
+ * - quick tap then hold with the same finger: drag (hold left button + move), released on lift
  * - 3 finger swipe L/R/U/D: back / recent / app drawer / notifications
  */
 class TouchpadView @JvmOverloads constructor(
@@ -70,6 +73,12 @@ class TouchpadView @JvmOverloads constructor(
     // Tap-and-drag state
     private var isDragMode = false
     private var firstFingerStationary = false
+
+    // Quick-tap-then-hold state (single finger: tap, release, press again and hold to drag)
+    private val tapThenHoldWindow = 400L // ms - max gap between a tap's release and the next touch-down
+    private var lastTapUpTime = 0L
+    private val holdHandler = Handler(Looper.getMainLooper())
+    private var pendingHoldCheck: Runnable? = null
 
     // Three-finger state
     private var isThreeFingerGesture = false
@@ -126,11 +135,17 @@ class TouchpadView @JvmOverloads constructor(
         invalidate()
     }
 
+    private fun cancelPendingHoldCheck() {
+        pendingHoldCheck?.let { holdHandler.removeCallbacks(it) }
+        pendingHoldCheck = null
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
 
             MotionEvent.ACTION_DOWN -> {
+                cancelPendingHoldCheck()
                 lastTouchX = event.x
                 lastTouchY = event.y
                 touchStartX = event.x
@@ -147,10 +162,35 @@ class TouchpadView @JvmOverloads constructor(
                 gestureLabel = ""
                 drawTouchX = event.x
                 drawTouchY = event.y
+
+                // Quick tap followed shortly by pressing down again = arm a hold check.
+                // If this same finger stays roughly still past dragHoldTime, start a drag.
+                if (touchStartTime - lastTapUpTime < tapThenHoldWindow) {
+                    val armX = event.x
+                    val armY = event.y
+                    val check = Runnable {
+                        if (activePointerCount == 1 && !isDragMode) {
+                            val dist = sqrt(
+                                (lastTouchX - armX).let { it * it } +
+                                (lastTouchY - armY).let { it * it }
+                            )
+                            if (dist < tapMaxDistance) {
+                                isDragMode = true
+                                gestureLabel = "HOLD"
+                                onDragStart?.invoke()
+                                invalidate()
+                            }
+                        }
+                    }
+                    pendingHoldCheck = check
+                    holdHandler.postDelayed(check, dragHoldTime)
+                }
+
                 invalidate()
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
+                cancelPendingHoldCheck()
                 activePointerCount = event.pointerCount
                 maxPointerCountInGesture = maxOf(maxPointerCountInGesture, event.pointerCount)
 
@@ -200,20 +240,20 @@ class TouchpadView @JvmOverloads constructor(
                     }
 
                     isDragMode -> {
-                        // Drag mode: move cursor with left button held
-                        if (event.pointerCount >= 2) {
-                            // Use the second finger for movement
-                            val idx = if (event.pointerCount > 1) 1 else 0
-                            val dx = (event.getX(idx) - lastTouchX) * sensitivity
-                            val dy = (event.getY(idx) - lastTouchY) * sensitivity
+                        // Drag mode: move cursor with left button held.
+                        // idx 1 = second finger (two-finger drag), idx 0 = same finger (tap-then-hold)
+                        val idx = if (event.pointerCount > 1) 1 else 0
+                        val rawDx = event.getX(idx) - lastTouchX
+                        val rawDy = event.getY(idx) - lastTouchY
+
+                        if (abs(rawDx) > moveDeadzone || abs(rawDy) > moveDeadzone) {
+                            val dx = rawDx * sensitivity
+                            val dy = rawDy * sensitivity
                             lastTouchX = event.getX(idx)
                             lastTouchY = event.getY(idx)
-
-                            if (abs(dx) > 0.5f || abs(dy) > 0.5f) {
-                                cursorX = (cursorX + dx).coerceIn(0f, displayWidth - 1f)
-                                cursorY = (cursorY + dy).coerceIn(0f, displayHeight - 1f)
-                                onCursorMove?.invoke(cursorX, cursorY)
-                            }
+                            cursorX = (cursorX + dx).coerceIn(0f, displayWidth - 1f)
+                            cursorY = (cursorY + dy).coerceIn(0f, displayHeight - 1f)
+                            onCursorMove?.invoke(cursorX, cursorY)
                         }
                         drawTouchX = event.x
                         drawTouchY = event.y
@@ -325,11 +365,13 @@ class TouchpadView @JvmOverloads constructor(
 
                         if (elapsed < tapMaxDuration && dist < tapMaxDistance) {
                             onClick?.invoke(cursorX, cursorY)
+                            lastTapUpTime = System.currentTimeMillis()
                         }
                     }
                 }
 
                 // Reset all state
+                cancelPendingHoldCheck()
                 activePointerCount = 0
                 maxPointerCountInGesture = 0
                 isScrolling = false
@@ -343,6 +385,7 @@ class TouchpadView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_CANCEL -> {
+                cancelPendingHoldCheck()
                 if (isDragMode) onDragEnd?.invoke()
                 activePointerCount = 0
                 maxPointerCountInGesture = 0
