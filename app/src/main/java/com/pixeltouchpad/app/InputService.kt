@@ -432,10 +432,21 @@ class InputService : IInputService.Stub() {
         }
     }
 
+    // Carries the fractional remainder truncated off each call's vScroll/hScroll (mirrors how
+    // uhidMove accumulates fractional pixels for cursor movement) - without this, a slow scroll
+    // whose per-event delta is e.g. 0.4 truncates straight to 0 and is silently dropped instead
+    // of contributing toward the next event, which is what made scrolling feel janky.
+    @Volatile private var vScrollRemainder = 0f
+    @Volatile private var hScrollRemainder = 0f
+
     override fun scroll(displayId: Int, x: Float, y: Float, vScroll: Float, hScroll: Float) {
         try {
-            val vAmount = vScroll.toInt().coerceIn(-10, 10)
-            val hAmount = hScroll.toInt().coerceIn(-10, 10)
+            vScrollRemainder += vScroll
+            hScrollRemainder += hScroll
+            val vAmount = vScrollRemainder.toInt().coerceIn(-10, 10)
+            val hAmount = hScrollRemainder.toInt().coerceIn(-10, 10)
+            vScrollRemainder -= vAmount
+            hScrollRemainder -= hAmount
             when (activeStrategy) {
                 Strategy.UHID -> sendMouseReport(0, 0, 0, vAmount, hAmount)
                 Strategy.SENDEVENT -> sendeventScroll(vAmount, hAmount)

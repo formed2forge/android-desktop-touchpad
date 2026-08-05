@@ -4,6 +4,23 @@ Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 �
 
 ---
 
+## Vertical scroll janky, horizontal smooth — ✅ FIXED (truncation, not an axis asymmetry)
+
+Confirmed on-device: new horizontal scroll felt smooth, existing vertical scroll still felt
+janky. Nothing in the axes' handling is actually asymmetric (same code path, same sign
+convention, same report bytes) - `InputService.scroll()` truncated `vScroll`/`hScroll` straight
+to an int every call with no accumulator, silently dropping the fractional remainder (e.g. a
+0.4 delta truncates to 0 and is gone). This bug predates this session (it's the original
+vertical-only `scroll()`, just extended as-is when horizontal was added) - it likely felt more
+noticeable for vertical here simply because that gesture happened to produce smaller per-event
+deltas in testing, not because horizontal is actually handled any differently.
+
+**Fix**: carry the truncated remainder forward per axis and add it into the next call, mirroring
+how `uhidMove` already accumulates fractional pixels for cursor movement instead of dropping
+them.
+
+---
+
 ## Smoothing made fine cursor movement worse — ✅ FIXED
 
 Confirmed on-device: after adding EMA cursor smoothing, small/precise movements ("rolling" the
