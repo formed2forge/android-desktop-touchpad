@@ -4,6 +4,26 @@ Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 �
 
 ---
 
+## Smoothing made fine cursor movement worse — ✅ FIXED
+
+Confirmed on-device: after adding EMA cursor smoothing, small/precise movements ("rolling" the
+finger slowly) got choppy - worse than before smoothing existed.
+
+**Cause**: adding smoothing also changed `lastTouchX/lastTouchY` to update on *every* touch
+sample, whereas the deadzone fix from earlier in the session specifically relied on only
+advancing them once the deadzone was cleared, so sub-threshold samples accumulate into the next
+event's delta instead of being discarded. With that accumulation gone, a slow roll produces a
+run of individually-tiny raw deltas; the exponential average converges to whatever small value
+keeps arriving and can sit below the deadzone indefinitely, so fine movement simply doesn't
+register until an atypically larger sample happens to punch through - which reads as
+stuck-then-jump, i.e. choppy.
+
+**Fix**: moved the deadzone check back to gating `lastTouchX/Y` itself (restoring the
+accumulate-across-skipped-samples behavior), with smoothing applied only to deltas that already
+cleared it, rather than smoothing every raw per-sample delta directly.
+
+---
+
 ## Manual keyboard toggle vs. the earlier FLAG_NOT_FOCUSABLE fix
 
 Goal: a button to summon the phone's own software keyboard on demand and relay keystrokes to

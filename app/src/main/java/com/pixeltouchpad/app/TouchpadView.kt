@@ -340,15 +340,24 @@ class TouchpadView @JvmOverloads constructor(
                         // Single-finger cursor movement - same path whether or not drag-locked;
                         // button-hold is handled server-side based on drag state, orthogonal to
                         // how the cursor itself moves.
+                        //
+                        // The deadzone gates lastTouchX/Y itself (not just whether we apply the
+                        // result), so a run of tiny samples - a slow, precise roll - keeps
+                        // accumulating into the next event's rawDx/rawDy instead of being
+                        // dropped. Smoothing only sees deltas that already cleared the deadzone;
+                        // smoothing tiny per-sample noise directly made fine movement worse, since
+                        // the exponential average converges to whatever small value keeps coming
+                        // in and can sit below the deadzone indefinitely.
                         val rawDx = event.x - lastTouchX
                         val rawDy = event.y - lastTouchY
-                        lastTouchX = event.x
-                        lastTouchY = event.y
 
-                        smoothedDx = smoothingAlpha * rawDx + (1 - smoothingAlpha) * smoothedDx
-                        smoothedDy = smoothingAlpha * rawDy + (1 - smoothingAlpha) * smoothedDy
+                        if (abs(rawDx) > moveDeadzone || abs(rawDy) > moveDeadzone) {
+                            lastTouchX = event.x
+                            lastTouchY = event.y
 
-                        if (abs(smoothedDx) > moveDeadzone || abs(smoothedDy) > moveDeadzone) {
+                            smoothedDx = smoothingAlpha * rawDx + (1 - smoothingAlpha) * smoothedDx
+                            smoothedDy = smoothingAlpha * rawDy + (1 - smoothingAlpha) * smoothedDy
+
                             cursorX += smoothedDx * sensitivity
                             cursorY += smoothedDy * sensitivity
                             onCursorMove?.invoke(cursorX, cursorY)
