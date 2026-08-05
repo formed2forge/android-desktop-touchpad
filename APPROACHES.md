@@ -72,6 +72,48 @@ Device: Pixel 8 Pro, Android 16 (SDK 36), Shizuku UID 2000
 
 ---
 
+## Approaches to multi-display cursor routing
+
+**Bug**: cursor defaulted to the phone's own screen even after the external display was
+detected and `externalDisplayId` was known — the AIDL methods accepted a `displayId` but
+`moveCursor`/UHID never actually used it to target a display.
+
+### Root cause
+A UHID virtual mouse has no display of its own. Unlike touch/MotionEvent injection (which
+takes a displayId directly), a kernel input device's pointer is routed to a display by the
+system's InputReader based on a device-to-display *association*, which by default doesn't
+exist — so the pointer falls back to the default (built-in) display.
+
+### `InputManager.addUniqueIdAssociationByPort` (Android 15+, SDK 35+) ✅ FIXED
+- **Status: IMPLEMENTED**
+- Confirmed via `scrcpy`'s PR [#6009](https://github.com/Genymobile/scrcpy/pull/6009), which
+  hit the identical problem adding a UHID mouse to a virtual display and solved it the same way,
+  also from a shell-UID process (their adb-pushed server) — matches our Shizuku UserService's
+  execution context, giving confidence shell UID holds the needed permission.
+- Requires `android.permission.ASSOCIATE_INPUT_DEVICE_TO_DISPLAY`, held implicitly by shell
+  (UID 2000) at the binder/UID level — no manifest declaration needed, since this isn't a
+  normal app-declared permission grant.
+- Mechanics:
+  1. When creating the UHID device, write a unique string (`uhidPhys = "pixeltouchpad:<pid>"`)
+     into the UHID_CREATE2 request's `phys` field (previously left blank).
+  2. Reflectively obtain a real `InputManager` bound to the live `IInputManager` binder service
+     (`ServiceManager.getService("input")` → `IInputManager.Stub.asInterface(...)` → hidden
+     `InputManager(IInputManager)` constructor) — avoids needing a real `Context`, which a
+     Shizuku UserService process doesn't cleanly have.
+  3. Reflectively obtain the target display's `uniqueId` (`DisplayManagerGlobal.getInstance()
+     .getDisplayInfo(displayId).uniqueId` — a hidden field on `DisplayInfo`).
+  4. Call `inputManager.addUniqueIdAssociationByPort(uhidPhys, displayUniqueId)` via reflection
+     (the method exists on the device at runtime but isn't in the public SDK's compile-time stubs).
+- All of the above is reflection because none of `IInputManager`, the `InputManager(IInputManager)`
+  constructor, `DisplayManagerGlobal`, or `addUniqueIdAssociationByPort` are in the public SDK.
+- Per the scrcpy PR discussion, order between "UHID device created" and "association registered"
+  doesn't matter — Android applies it once both exist, whichever happens first.
+- **Not yet verified on physical hardware** — compiles and passes CI, but this chain of hidden-API
+  reflection can only be confirmed by actually running it on the Pixel 8 Pro. `diagnose()` now
+  reports `uhidPhys` and `lastAssociationResult` for on-device debugging if it doesn't work.
+
+---
+
 ## Key findings
 
 1. **DisplayId isn't sequential** — IDs tend to be 196, 197, 203, etc.

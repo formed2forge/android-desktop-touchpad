@@ -1,5 +1,8 @@
 package com.pixeltouchpad.app
 
+import android.os.Build
+import android.os.IBinder
+import android.os.Process
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -16,6 +19,11 @@ import java.nio.ByteOrder
 class InputService : IInputService.Stub() {
 
     private val initLog = mutableListOf<String>()
+
+    // Unique "port" identifying our UHID device, written into its phys field and
+    // matched against a display via InputManager.addUniqueIdAssociationByPort (Android 15+).
+    // Without this, the virtual mouse pointer defaults to the phone's own display.
+    private val uhidPhys = "pixeltouchpad:${Process.myPid()}"
 
     // ---- Strategy selection ----
     private enum class Strategy { UHID, SENDEVENT, NONE }
@@ -130,8 +138,10 @@ class InputService : IInputService.Stub() {
 
         val name = "PixelTouchpad Mouse".toByteArray(Charsets.UTF_8)
         buf.put(name, 0, minOf(name.size, 127))
-        buf.position(UHID_EVENT_HEADER + 128)       // skip name
-        buf.position(UHID_EVENT_HEADER + 128 + 64)  // skip phys
+        buf.position(UHID_EVENT_HEADER + 128)       // seek to phys
+        val physBytes = uhidPhys.toByteArray(Charsets.UTF_8)
+        buf.put(physBytes, 0, minOf(physBytes.size, 63))
+        buf.position(UHID_EVENT_HEADER + 128 + 64)  // seek to uniq (left blank)
         buf.position(UHID_EVENT_HEADER + 128 + 64 + 64) // skip uniq
         buf.putShort(HID_MOUSE_DESCRIPTOR.size.toShort()) // rd_size
         buf.putShort(BUS_VIRTUAL)  // bus
@@ -264,6 +274,59 @@ class InputService : IInputService.Stub() {
             val err = process.errorStream.bufferedReader().readText().trim()
             Pair(process.exitValue(), if (err.isNotEmpty()) "$out\n$err".trim() else out)
         } catch (e: Exception) { Pair(-1, "Exception: ${e.message}") }
+    }
+
+    // ---- Display association (Android 15+) ----
+    // A virtual UHID mouse has no display of its own; the system otherwise defaults
+    // its pointer to the phone's built-in display. addUniqueIdAssociationByPort ties
+    // our UHID device's phys (uhidPhys) to the target display's uniqueId.
+
+    @Volatile private var lastAssociationResult: String? = null
+
+    private fun getDisplayUniqueId(displayId: Int): String? {
+        val dmgClass = Class.forName("android.hardware.display.DisplayManagerGlobal")
+        val dmg = dmgClass.getMethod("getInstance").invoke(null)
+        val displayInfo = dmgClass.getMethod("getDisplayInfo", Int::class.javaPrimitiveType)
+            .invoke(dmg, displayId) ?: return null
+        return displayInfo.javaClass.getField("uniqueId").get(displayInfo) as? String
+    }
+
+    private fun getInputManager(): android.hardware.input.InputManager? {
+        val binder = Class.forName("android.os.ServiceManager")
+            .getMethod("getService", String::class.java)
+            .invoke(null, "input") as? IBinder ?: return null
+
+        val iInputManagerInterface = Class.forName("android.hardware.input.IInputManager")
+        val iInputManager = Class.forName("android.hardware.input.IInputManager\$Stub")
+            .getMethod("asInterface", IBinder::class.java)
+            .invoke(null, binder)
+
+        val ctor = android.hardware.input.InputManager::class.java
+            .getDeclaredConstructor(iInputManagerInterface)
+        ctor.isAccessible = true
+        return ctor.newInstance(iInputManager) as android.hardware.input.InputManager
+    }
+
+    override fun associateWithDisplay(displayId: Int) {
+        if (Build.VERSION.SDK_INT < 35) {
+            lastAssociationResult = "skipped: requires Android 15+ (SDK ${Build.VERSION.SDK_INT})"
+            return
+        }
+        try {
+            val displayUniqueId = getDisplayUniqueId(displayId)
+                ?: throw IllegalStateException("no uniqueId for display $displayId")
+            val inputManager = getInputManager()
+                ?: throw IllegalStateException("could not obtain InputManager")
+
+            inputManager.javaClass
+                .getMethod("addUniqueIdAssociationByPort", String::class.java, String::class.java)
+                .invoke(inputManager, uhidPhys, displayUniqueId)
+
+            lastAssociationResult = "OK: port=$uhidPhys -> display=$displayId ($displayUniqueId)"
+        } catch (e: Exception) {
+            lastAssociationResult = "FAILED: ${e.message}"
+            lastSendError = "associateWithDisplay: ${e.message}"
+        }
     }
 
     // ---- AIDL implementation ----
@@ -404,6 +467,8 @@ class InputService : IInputService.Stub() {
         sb.appendLine("reports sent: $reportSentCount")
         sb.appendLine("prevX: $prevX prevY: $prevY")
         sb.appendLine("lastSendError: $lastSendError")
+        sb.appendLine("uhidPhys: $uhidPhys")
+        sb.appendLine("lastAssociationResult: $lastAssociationResult")
         sb.appendLine()
 
         // Init log

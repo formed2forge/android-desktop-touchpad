@@ -287,6 +287,9 @@ class MainActivity : AppCompatActivity() {
             touchpadView.displayHeight = externalHeight
             touchpadView.resetCursor()
 
+            try { inputService?.associateWithDisplay(externalDisplayId) }
+            catch (e: Exception) { lastError = "AssociateDisplay: ${e.message}" }
+
             showTouchpad()
         } else {
             showSetupPanel()
