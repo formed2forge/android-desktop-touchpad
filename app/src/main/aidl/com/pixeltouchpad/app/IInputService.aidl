@@ -6,7 +6,7 @@ interface IInputService {
     oneway void moveCursor(int displayId, float x, float y);
     oneway void click(int displayId, float x, float y);
     oneway void rightClick(int displayId, float x, float y);
-    oneway void scroll(int displayId, float x, float y, float vScroll);
+    oneway void scroll(int displayId, float x, float y, float vScroll, float hScroll);
     oneway void startDrag(int displayId);
     oneway void endDrag(int displayId);
     oneway void sendKeyEvent(int displayId, int keyCode);

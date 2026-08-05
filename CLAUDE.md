@@ -36,12 +36,12 @@ PointerController (system cursor on the display)
 - AIDL methods (oneway): associateWithDisplay, setKeyboardOnInternalDisplay, moveCursor, click, rightClick, scroll, startDrag, endDrag, sendKeyEvent, sendShellCommand, destroy
 - AIDL methods (synchronous): diagnose
 - Strategy: UHID > sendevent > shell input (fallback)
-- UHID report: buttons(1) + X(1) + Y(1) + wheel(1) = 4 bytes
+- UHID report: buttons(1) + X(1) + Y(1) + wheel(1) + hwheel/AC Pan(1) = 5 bytes
 
 ### 3. MainActivity (`MainActivity.kt`)
 - Setup flow: Shizuku permission → bind UserService → display detection → touchpad
 - Fullscreen immersive mode once connected
-- Settings BottomSheet: cursor/scroll sensitivity, diagnostics, disconnect
+- Settings BottomSheet: cursor/scroll sensitivity, drag-lock toggle, diagnostics, disconnect
 - SharedPreferences for settings persistence
 
 ## Dependency on Shizuku
@@ -56,12 +56,12 @@ PointerController (system cursor on the display)
 
 | Gesture | Action | AIDL method | Implementation |
 |-------|------|-------------|-------------|
-| 1-finger drag | cursor movement | moveCursor | UHID REL_X/Y |
+| 1-finger drag | cursor movement (smoothed) | moveCursor | UHID REL_X/Y |
 | 1-finger tap | left click | click | UHID BTN_LEFT |
 | 2-finger tap | right click | rightClick | UHID BTN_RIGHT (bit 1 = 0x02) |
-| 2 fingers vertical | scroll | scroll | UHID REL_WHEEL |
+| 2 fingers same direction | scroll, natural direction, with momentum after lift | scroll | UHID REL_WHEEL + AC Pan (horizontal) |
 | 2-finger pinch | zoom | — | Ctrl+scroll (TBD) |
-| 1 holds + 2nd moves, *or* quick tap then hold same finger (disabled by default, see `enableTapThenHold`) | drag | startDrag/endDrag | UHID button=1 hold |
+| double-tap then hold, ends via another double-tap (toggle in Settings, see `enableDragLock`, default on) | drag lock | startDrag/endDrag | UHID button=1 hold, persists across touch sessions |
 | 3 fingers left | Back | sendKeyEvent(4) | `input keyevent 4` |
 | 3 fingers right | Task manager | sendKeyEvent(187) | `input keyevent 187` |
 | 3 fingers up | App drawer | sendKeyEvent(284) | `input keyevent 284` |

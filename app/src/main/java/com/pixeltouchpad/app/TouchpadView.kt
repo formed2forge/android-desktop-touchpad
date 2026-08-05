@@ -17,16 +17,16 @@ import kotlin.math.sqrt
  * TouchpadView - captures touch gestures and translates them to cursor/click/scroll events.
  *
  * Gestures:
- * - 1 finger drag: move cursor
+ * - 1 finger drag: move cursor (smoothed to reduce jitter)
  * - 1 finger tap: left click
  * - 2 finger tap (no movement): right click
- * - 2 finger same direction: scroll
+ * - 2 finger same direction: scroll (natural direction, with momentum after lift)
  * - 2 finger pinch (distance changes): zoom (Ctrl+scroll)
- * - 1 finger hold + 2nd finger added: drag (hold left button + move)
- * - quick tap then hold with the same finger: drag (hold left button + move), released on lift.
- *   Disabled by default (see [enableTapThenHold]) - its timing window can't be reliably told
- *   apart from ordinary "click, then move, then click again" usage, which made it misfire and
- *   start a spurious button-hold (e.g. dismissing menus, hiding the keyboard mid-interaction).
+ * - double-tap then hold: drag lock. The button stays down across touch sessions - move by
+ *   touching and moving again, no need to hold continuously - until ended by another
+ *   double-tap. See [enableDragLock]. Replaces the old two-finger hold+add-finger drag: this
+ *   is deliberately a *double*-tap (same spot, quick succession) rather than "any touch soon
+ *   after a tap," since the latter misfired on ordinary click-then-move-then-click usage.
  * - 3 finger swipe L/R/U/D: back / recent / app drawer / notifications
  */
 class TouchpadView @JvmOverloads constructor(
@@ -40,13 +40,29 @@ class TouchpadView @JvmOverloads constructor(
     // --- Configuration ---
     var sensitivity = 1.5f
     var scrollSensitivity = 0.08f
-    var enableTapThenHold = false
+    var enableDragLock = true
+    var naturalScrolling = true
     private val tapMaxDuration = 200L   // ms
     private val tapMaxDistance = 30f     // px
     private val moveDeadzone = 3f        // px, raw finger jitter filter before cursor moves
-    private val dragHoldTime = 250L     // ms before 1st finger counts as "hold"
+    private val dragHoldTime = 250L     // ms before a held finger counts as "hold"
     private val threeFingerSwipeThreshold = 100f // px minimum swipe
     private val pinchZoomThreshold = 30f // px change in finger distance
+
+    // Cursor movement smoothing (exponential moving average) - damps sensor/touch noise
+    // without adding much lag. Lower alpha = smoother but laggier, higher = snappier but noisier.
+    private val smoothingAlpha = 0.55f
+    private var smoothedDx = 0f
+    private var smoothedDy = 0f
+
+    // Scroll momentum (decays after the fingers lift, like trackpad/phone scrolling)
+    private val momentumTickMs = 16L
+    private val momentumDecay = 0.93f
+    private val momentumMinVelocity = 0.3f // scroll units/tick below which momentum stops
+    private val scrollVelocityWindowMs = 100L
+    private data class ScrollSample(val time: Long, val vDelta: Float, val hDelta: Float)
+    private val scrollSamples = ArrayDeque<ScrollSample>()
+    private var pendingMomentum: Runnable? = null
 
     // --- Cursor state ---
     var cursorX = 0f
@@ -67,6 +83,7 @@ class TouchpadView @JvmOverloads constructor(
 
     // Two-finger state
     private var isScrolling = false
+    private var lastScrollX = 0f
     private var lastScrollY = 0f
     private var twoFingerTapStartTime = 0L
     private var twoFingerMoved = false
@@ -74,13 +91,12 @@ class TouchpadView @JvmOverloads constructor(
     private var lastPinchDistance = 0f
     private var isPinching = false
 
-    // Tap-and-drag state
+    // Drag-lock state (persists across touch sessions once armed - see class doc)
     private var isDragMode = false
-    private var firstFingerStationary = false
-
-    // Quick-tap-then-hold state (single finger: tap, release, press again and hold to drag)
-    private val tapThenHoldWindow = 400L // ms - max gap between a tap's release and the next touch-down
-    private var lastTapUpTime = 0L
+    private val doubleTapWindow = 300L // ms between two taps to count as a double-tap
+    private var lastQuickTapTime = 0L
+    private var lastQuickTapX = 0f
+    private var lastQuickTapY = 0f
     private val holdHandler = Handler(Looper.getMainLooper())
     private var pendingHoldCheck: Runnable? = null
 
@@ -95,7 +111,7 @@ class TouchpadView @JvmOverloads constructor(
     var onCursorMove: ((x: Float, y: Float) -> Unit)? = null
     var onClick: ((x: Float, y: Float) -> Unit)? = null
     var onRightClick: ((x: Float, y: Float) -> Unit)? = null
-    var onScroll: ((x: Float, y: Float, vScroll: Float) -> Unit)? = null
+    var onScroll: ((x: Float, y: Float, vScroll: Float, hScroll: Float) -> Unit)? = null
     var onPinchZoom: ((zoomDelta: Float) -> Unit)? = null
     var onDragStart: (() -> Unit)? = null
     var onDragEnd: (() -> Unit)? = null
@@ -144,12 +160,54 @@ class TouchpadView @JvmOverloads constructor(
         pendingHoldCheck = null
     }
 
+    private fun cancelMomentum() {
+        pendingMomentum?.let { holdHandler.removeCallbacks(it) }
+        pendingMomentum = null
+    }
+
+    private fun recordScrollVelocitySample(vDelta: Float, hDelta: Float) {
+        val now = System.currentTimeMillis()
+        scrollSamples.addLast(ScrollSample(now, vDelta, hDelta))
+        while (scrollSamples.isNotEmpty() && now - scrollSamples.first().time > scrollVelocityWindowMs) {
+            scrollSamples.removeFirst()
+        }
+    }
+
+    private fun startScrollMomentumIfApplicable() {
+        val samples = scrollSamples.toList()
+        scrollSamples.clear()
+        if (samples.size < 2) return
+
+        val span = (samples.last().time - samples.first().time).coerceAtLeast(1L)
+        var velocityV = samples.sumOf { it.vDelta.toDouble() }.toFloat() / span * momentumTickMs
+        var velocityH = samples.sumOf { it.hDelta.toDouble() }.toFloat() / span * momentumTickMs
+
+        if (abs(velocityV) < momentumMinVelocity && abs(velocityH) < momentumMinVelocity) return
+
+        cancelMomentum()
+        val runnable = object : Runnable {
+            override fun run() {
+                if (abs(velocityV) < momentumMinVelocity && abs(velocityH) < momentumMinVelocity) {
+                    pendingMomentum = null
+                    return
+                }
+                onScroll?.invoke(cursorX, cursorY, velocityV, velocityH)
+                velocityV *= momentumDecay
+                velocityH *= momentumDecay
+                holdHandler.postDelayed(this, momentumTickMs)
+            }
+        }
+        pendingMomentum = runnable
+        holdHandler.postDelayed(runnable, momentumTickMs)
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
 
             MotionEvent.ACTION_DOWN -> {
                 cancelPendingHoldCheck()
+                cancelMomentum()
                 lastTouchX = event.x
                 lastTouchY = event.y
                 touchStartX = event.x
@@ -159,73 +217,70 @@ class TouchpadView @JvmOverloads constructor(
                 maxPointerCountInGesture = 1
                 isScrolling = false
                 isThreeFingerGesture = false
-                isDragMode = false
                 isPinching = false
                 twoFingerMoved = false
-                firstFingerStationary = false
-                gestureLabel = ""
+                smoothedDx = 0f
+                smoothedDy = 0f
+                gestureLabel = if (isDragMode) "DRAG" else ""
                 drawTouchX = event.x
                 drawTouchY = event.y
 
-                // Quick tap followed shortly by pressing down again = arm a hold check.
-                // If this same finger stays roughly still past dragHoldTime, start a drag.
-                if (enableTapThenHold && touchStartTime - lastTapUpTime < tapThenHoldWindow) {
-                    val armX = event.x
-                    val armY = event.y
-                    val check = Runnable {
-                        if (activePointerCount == 1 && !isDragMode) {
-                            val dist = sqrt(
-                                (lastTouchX - armX).let { it * it } +
-                                (lastTouchY - armY).let { it * it }
-                            )
-                            if (dist < tapMaxDistance) {
-                                isDragMode = true
-                                gestureLabel = "HOLD"
-                                onDragStart?.invoke()
-                                invalidate()
+                // isDragMode is NOT reset here - it persists across touch sessions while
+                // drag-locked (see class doc). Only arm a new hold-check when not already locked.
+                if (enableDragLock && !isDragMode) {
+                    val dist = sqrt(
+                        (event.x - lastQuickTapX).let { it * it } +
+                        (event.y - lastQuickTapY).let { it * it }
+                    )
+                    if (touchStartTime - lastQuickTapTime < doubleTapWindow && dist < tapMaxDistance) {
+                        // Second touch of a potential double-tap: arm a delayed check. If this
+                        // same finger stays roughly still past dragHoldTime, engage drag lock.
+                        val armX = event.x
+                        val armY = event.y
+                        val check = Runnable {
+                            if (activePointerCount == 1 && !isDragMode) {
+                                val d = sqrt(
+                                    (lastTouchX - armX).let { it * it } +
+                                    (lastTouchY - armY).let { it * it }
+                                )
+                                if (d < tapMaxDistance) {
+                                    isDragMode = true
+                                    lastQuickTapTime = 0L // consumed - don't also match as an end-tap
+                                    gestureLabel = "DRAG"
+                                    onDragStart?.invoke()
+                                    invalidate()
+                                }
                             }
                         }
+                        pendingHoldCheck = check
+                        holdHandler.postDelayed(check, dragHoldTime)
                     }
-                    pendingHoldCheck = check
-                    holdHandler.postDelayed(check, dragHoldTime)
                 }
 
                 invalidate()
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
+                if (isDragMode) return true // drag-locked: only single-finger taps matter
+
                 cancelPendingHoldCheck()
                 activePointerCount = event.pointerCount
                 maxPointerCountInGesture = maxOf(maxPointerCountInGesture, event.pointerCount)
 
                 if (activePointerCount == 2) {
-                    val elapsed = System.currentTimeMillis() - touchStartTime
-                    val dist = sqrt(
-                        (event.getX(0) - touchStartX).let { it * it } +
-                        (event.getY(0) - touchStartY).let { it * it }
-                    )
-
-                    // Check if first finger was held stationary = tap-and-drag
-                    if (elapsed > dragHoldTime && dist < tapMaxDistance) {
-                        isDragMode = true
-                        gestureLabel = "DRAG"
-                        onDragStart?.invoke()
-                    } else {
-                        // Normal two-finger gesture (scroll / pinch / right-click tap)
-                        isScrolling = true
-                        lastScrollY = averageY(event)
-                        twoFingerTapStartTime = System.currentTimeMillis()
-                        twoFingerMoved = false
-                        initialPinchDistance = fingerDistance(event)
-                        lastPinchDistance = initialPinchDistance
-                        isPinching = false
-                    }
+                    isScrolling = true
+                    lastScrollX = averageX(event)
+                    lastScrollY = averageY(event)
+                    twoFingerTapStartTime = System.currentTimeMillis()
+                    twoFingerMoved = false
+                    initialPinchDistance = fingerDistance(event)
+                    lastPinchDistance = initialPinchDistance
+                    isPinching = false
                 }
 
                 if (activePointerCount >= 3) {
                     isScrolling = false
                     isPinching = false
-                    isDragMode = false
                     isThreeFingerGesture = true
                     threeFingerStartX = averageX(event)
                     threeFingerStartY = averageY(event)
@@ -243,32 +298,13 @@ class TouchpadView @JvmOverloads constructor(
                         threeFingerLastY = averageY(event)
                     }
 
-                    isDragMode -> {
-                        // Drag mode: move cursor with left button held.
-                        // idx 1 = second finger (two-finger drag), idx 0 = same finger (tap-then-hold)
-                        val idx = if (event.pointerCount > 1) 1 else 0
-                        val rawDx = event.getX(idx) - lastTouchX
-                        val rawDy = event.getY(idx) - lastTouchY
-
-                        if (abs(rawDx) > moveDeadzone || abs(rawDy) > moveDeadzone) {
-                            val dx = rawDx * sensitivity
-                            val dy = rawDy * sensitivity
-                            lastTouchX = event.getX(idx)
-                            lastTouchY = event.getY(idx)
-                            cursorX += dx
-                            cursorY += dy
-                            onCursorMove?.invoke(cursorX, cursorY)
-                        }
-                        drawTouchX = event.x
-                        drawTouchY = event.y
-                        invalidate()
-                    }
-
                     isScrolling && event.pointerCount >= 2 -> {
                         // Check for pinch vs scroll
                         val currentDist = fingerDistance(event)
                         val distDelta = currentDist - initialPinchDistance
+                        val currentX = averageX(event)
                         val currentY = averageY(event)
+                        val scrollDeltaX = currentX - lastScrollX
                         val scrollDeltaY = currentY - lastScrollY
 
                         if (!isPinching && abs(distDelta) > pinchZoomThreshold) {
@@ -285,28 +321,36 @@ class TouchpadView @JvmOverloads constructor(
                                 onPinchZoom?.invoke(pinchDelta)
                             }
                         } else {
-                            // Normal scroll (both fingers same direction)
+                            // Normal scroll (both fingers move together)
+                            lastScrollX = currentX
                             lastScrollY = currentY
-                            if (abs(scrollDeltaY) > 1f) {
+                            if (abs(scrollDeltaX) > 1f || abs(scrollDeltaY) > 1f) {
                                 twoFingerMoved = true
                                 gestureLabel = "SCROLL"
-                                onScroll?.invoke(cursorX, cursorY, -scrollDeltaY * scrollSensitivity)
+                                val sign = if (naturalScrolling) 1f else -1f
+                                val vDelta = sign * scrollDeltaY * scrollSensitivity
+                                val hDelta = sign * scrollDeltaX * scrollSensitivity
+                                onScroll?.invoke(cursorX, cursorY, vDelta, hDelta)
+                                recordScrollVelocitySample(vDelta, hDelta)
                             }
                         }
                     }
 
-                    !isScrolling && !isThreeFingerGesture && !isDragMode && event.pointerCount == 1 -> {
-                        // Single-finger cursor movement
+                    !isScrolling && !isThreeFingerGesture && event.pointerCount == 1 -> {
+                        // Single-finger cursor movement - same path whether or not drag-locked;
+                        // button-hold is handled server-side based on drag state, orthogonal to
+                        // how the cursor itself moves.
                         val rawDx = event.x - lastTouchX
                         val rawDy = event.y - lastTouchY
+                        lastTouchX = event.x
+                        lastTouchY = event.y
 
-                        if (abs(rawDx) > moveDeadzone || abs(rawDy) > moveDeadzone) {
-                            val dx = rawDx * sensitivity
-                            val dy = rawDy * sensitivity
-                            lastTouchX = event.x
-                            lastTouchY = event.y
-                            cursorX += dx
-                            cursorY += dy
+                        smoothedDx = smoothingAlpha * rawDx + (1 - smoothingAlpha) * smoothedDx
+                        smoothedDy = smoothingAlpha * rawDy + (1 - smoothingAlpha) * smoothedDy
+
+                        if (abs(smoothedDx) > moveDeadzone || abs(smoothedDy) > moveDeadzone) {
+                            cursorX += smoothedDx * sensitivity
+                            cursorY += smoothedDy * sensitivity
                             onCursorMove?.invoke(cursorX, cursorY)
                         }
 
@@ -319,14 +363,19 @@ class TouchpadView @JvmOverloads constructor(
 
             MotionEvent.ACTION_POINTER_UP -> {
                 activePointerCount = event.pointerCount - 1
-
-                // When second finger lifts during drag, end drag
-                if (isDragMode && activePointerCount < 2) {
-                    // Keep drag mode active until full ACTION_UP
+                if (isScrolling && !isPinching && activePointerCount < 2) {
+                    startScrollMomentumIfApplicable()
+                    isScrolling = false
                 }
             }
 
             MotionEvent.ACTION_UP -> {
+                val elapsed = System.currentTimeMillis() - touchStartTime
+                val distX = event.x - touchStartX
+                val distY = event.y - touchStartY
+                val dist = sqrt(distX * distX + distY * distY)
+                val wasQuickTap = elapsed < tapMaxDuration && dist < tapMaxDistance
+
                 when {
                     isThreeFingerGesture && maxPointerCountInGesture >= 3 -> {
                         // Evaluate three-finger swipe direction
@@ -337,11 +386,9 @@ class TouchpadView @JvmOverloads constructor(
 
                         if (absDx > threeFingerSwipeThreshold || absDy > threeFingerSwipeThreshold) {
                             if (absDx > absDy) {
-                                // Horizontal swipe
                                 if (swipeDx < 0) onThreeFingerSwipe?.invoke(SwipeDirection.LEFT)
                                 else onThreeFingerSwipe?.invoke(SwipeDirection.RIGHT)
                             } else {
-                                // Vertical swipe
                                 if (swipeDy < 0) onThreeFingerSwipe?.invoke(SwipeDirection.UP)
                                 else onThreeFingerSwipe?.invoke(SwipeDirection.DOWN)
                             }
@@ -349,53 +396,71 @@ class TouchpadView @JvmOverloads constructor(
                     }
 
                     isDragMode -> {
-                        onDragEnd?.invoke()
+                        // Drag-locked: only a matching double-tap ends it (no lift-to-end, for now)
+                        if (wasQuickTap) {
+                            val gapOk = touchStartTime - lastQuickTapTime < doubleTapWindow
+                            val posOk = sqrt(
+                                (event.x - lastQuickTapX).let { it * it } +
+                                (event.y - lastQuickTapY).let { it * it }
+                            ) < tapMaxDistance
+                            if (gapOk && posOk) {
+                                isDragMode = false
+                                lastQuickTapTime = 0L
+                                onDragEnd?.invoke()
+                            } else {
+                                lastQuickTapTime = System.currentTimeMillis()
+                                lastQuickTapX = event.x
+                                lastQuickTapY = event.y
+                            }
+                        }
+                        // A non-quick release (real drag movement) leaves the lock as-is.
                     }
 
                     maxPointerCountInGesture == 2 && !twoFingerMoved && !isPinching -> {
                         // Two-finger tap = right click
-                        val elapsed = System.currentTimeMillis() - twoFingerTapStartTime
-                        if (elapsed < tapMaxDuration) {
+                        val twoFingerElapsed = System.currentTimeMillis() - twoFingerTapStartTime
+                        if (twoFingerElapsed < tapMaxDuration) {
                             onRightClick?.invoke(cursorX, cursorY)
                         }
                     }
 
                     !isScrolling && maxPointerCountInGesture <= 1 -> {
                         // Single-finger tap = left click
-                        val elapsed = System.currentTimeMillis() - touchStartTime
-                        val distX = event.x - touchStartX
-                        val distY = event.y - touchStartY
-                        val dist = sqrt(distX * distX + distY * distY)
-
-                        if (elapsed < tapMaxDuration && dist < tapMaxDistance) {
+                        if (wasQuickTap) {
                             onClick?.invoke(cursorX, cursorY)
-                            lastTapUpTime = System.currentTimeMillis()
+                            lastQuickTapTime = System.currentTimeMillis()
+                            lastQuickTapX = event.x
+                            lastQuickTapY = event.y
                         }
                     }
                 }
 
-                // Reset all state
+                if (isScrolling && !isPinching) startScrollMomentumIfApplicable()
+
+                // Reset gesture state - isDragMode is intentionally left untouched (see above)
                 cancelPendingHoldCheck()
                 activePointerCount = 0
                 maxPointerCountInGesture = 0
                 isScrolling = false
                 isThreeFingerGesture = false
-                isDragMode = false
                 isPinching = false
-                gestureLabel = ""
+                gestureLabel = if (isDragMode) "DRAG" else ""
                 drawTouchX = -1f
                 drawTouchY = -1f
                 invalidate()
             }
 
             MotionEvent.ACTION_CANCEL -> {
+                // Unlike ACTION_UP, a cancel ends the drag lock defensively - the gesture was
+                // aborted/taken over by the system rather than a normal user release, so there's
+                // no guarantee a matching end-double-tap will ever arrive.
                 cancelPendingHoldCheck()
                 if (isDragMode) onDragEnd?.invoke()
+                isDragMode = false
                 activePointerCount = 0
                 maxPointerCountInGesture = 0
                 isScrolling = false
                 isThreeFingerGesture = false
-                isDragMode = false
                 isPinching = false
                 gestureLabel = ""
                 drawTouchX = -1f

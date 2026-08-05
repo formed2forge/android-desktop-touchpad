@@ -75,6 +75,12 @@
 ### 11. Auto-launch
 - BroadcastReceiver for monitor connection
 
+### 12. Manual keyboard toggle
+- A button/gesture to show the on-screen keyboard on demand, independent of Android's own
+  IME-focus detection — needed for apps that render their own content without a native
+  focused text field (e.g. remote desktop/VNC/RDP clients), where Android never naturally
+  triggers the keyboard since there's nothing it recognizes as a focused `EditText`.
+
 ---
 
 ## 🟢 Phase 3 – Release

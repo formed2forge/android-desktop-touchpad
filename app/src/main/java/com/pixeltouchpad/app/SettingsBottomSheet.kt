@@ -8,23 +8,27 @@ import android.widget.Button
 import android.widget.SeekBar
 import android.widget.TextView
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.android.material.switchmaterial.SwitchMaterial
 
 class SettingsBottomSheet : BottomSheetDialogFragment() {
 
     var onSensitivityChanged: ((Float) -> Unit)? = null
     var onScrollSensitivityChanged: ((Float) -> Unit)? = null
+    var onDragLockToggled: ((Boolean) -> Unit)? = null
     var onDiagnoseClicked: (() -> Unit)? = null
     var onDisconnectClicked: (() -> Unit)? = null
 
     private var currentSensitivity = 1.5f
     private var currentScrollSensitivity = 0.08f
+    private var currentDragLockEnabled = true
 
     companion object {
-        fun newInstance(cursorSens: Float, scrollSens: Float): SettingsBottomSheet {
+        fun newInstance(cursorSens: Float, scrollSens: Float, dragLockEnabled: Boolean): SettingsBottomSheet {
             return SettingsBottomSheet().apply {
                 arguments = Bundle().apply {
                     putFloat("cursor_sens", cursorSens)
                     putFloat("scroll_sens", scrollSens)
+                    putBoolean("drag_lock", dragLockEnabled)
                 }
             }
         }
@@ -34,6 +38,7 @@ class SettingsBottomSheet : BottomSheetDialogFragment() {
         super.onCreate(savedInstanceState)
         currentSensitivity = arguments?.getFloat("cursor_sens", 1.5f) ?: 1.5f
         currentScrollSensitivity = arguments?.getFloat("scroll_sens", 0.08f) ?: 0.08f
+        currentDragLockEnabled = arguments?.getBoolean("drag_lock", true) ?: true
     }
 
     override fun onCreateView(
@@ -47,6 +52,7 @@ class SettingsBottomSheet : BottomSheetDialogFragment() {
         val cursorSeek = view.findViewById<SeekBar>(R.id.seekCursorSens)
         val scrollLabel = view.findViewById<TextView>(R.id.labelScrollSens)
         val scrollSeek = view.findViewById<SeekBar>(R.id.seekScrollSens)
+        val switchDragLock = view.findViewById<SwitchMaterial>(R.id.switchDragLock)
         val btnDiagnose = view.findViewById<Button>(R.id.btnDiagnose)
         val btnDisconnect = view.findViewById<Button>(R.id.btnDisconnect)
 
@@ -79,6 +85,11 @@ class SettingsBottomSheet : BottomSheetDialogFragment() {
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
         })
+
+        switchDragLock.isChecked = currentDragLockEnabled
+        switchDragLock.setOnCheckedChangeListener { _, isChecked ->
+            onDragLockToggled?.invoke(isChecked)
+        }
 
         btnDiagnose.setOnClickListener { onDiagnoseClicked?.invoke() }
         btnDisconnect.setOnClickListener {

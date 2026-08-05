@@ -30,8 +30,10 @@ class MainActivity : AppCompatActivity() {
         private const val PREFS_NAME = "touchpad_prefs"
         private const val KEY_CURSOR_SENSITIVITY = "cursor_sensitivity"
         private const val KEY_SCROLL_SENSITIVITY = "scroll_sensitivity"
+        private const val KEY_ENABLE_DRAG_LOCK = "enable_drag_lock"
         private const val DEFAULT_CURSOR_SENS = 1.5f
         private const val DEFAULT_SCROLL_SENS = 0.08f
+        private const val DEFAULT_ENABLE_DRAG_LOCK = true
     }
 
     private var inputService: IInputService? = null
@@ -132,6 +134,7 @@ class MainActivity : AppCompatActivity() {
         // Load persisted sensitivity
         touchpadView.sensitivity = prefs.getFloat(KEY_CURSOR_SENSITIVITY, DEFAULT_CURSOR_SENS)
         touchpadView.scrollSensitivity = prefs.getFloat(KEY_SCROLL_SENSITIVITY, DEFAULT_SCROLL_SENS)
+        touchpadView.enableDragLock = prefs.getBoolean(KEY_ENABLE_DRAG_LOCK, DEFAULT_ENABLE_DRAG_LOCK)
 
         btnConnect.setOnClickListener { startSetup() }
         btnSettings.setOnClickListener { openSettings() }
@@ -161,9 +164,9 @@ class MainActivity : AppCompatActivity() {
             catch (e: Exception) { lastError = "RClick: ${e.message}" }
         }
 
-        touchpadView.onScroll = { x, y, vScroll ->
+        touchpadView.onScroll = { x, y, vScroll, hScroll ->
             scrollCount++
-            try { inputService?.scroll(externalDisplayId, x, y, vScroll) }
+            try { inputService?.scroll(externalDisplayId, x, y, vScroll, hScroll) }
             catch (e: Exception) { lastError = "Scroll: ${e.message}" }
             if (scrollCount % 10 == 0L) runOnUiThread { updateEventCounter() }
         }
@@ -172,7 +175,7 @@ class MainActivity : AppCompatActivity() {
             // Convert pinch to scroll events (zoom = Ctrl+scroll in most apps)
             // Positive delta = fingers apart = zoom in = scroll up
             val scrollAmount = if (zoomDelta > 0) 1f else -1f
-            try { inputService?.scroll(externalDisplayId, 0f, 0f, scrollAmount) }
+            try { inputService?.scroll(externalDisplayId, 0f, 0f, scrollAmount, 0f) }
             catch (e: Exception) { lastError = "Zoom: ${e.message}" }
         }
 
@@ -326,7 +329,8 @@ class MainActivity : AppCompatActivity() {
     private fun openSettings() {
         val sheet = SettingsBottomSheet.newInstance(
             touchpadView.sensitivity,
-            touchpadView.scrollSensitivity
+            touchpadView.scrollSensitivity,
+            touchpadView.enableDragLock
         )
 
         sheet.onSensitivityChanged = { value ->
@@ -337,6 +341,11 @@ class MainActivity : AppCompatActivity() {
         sheet.onScrollSensitivityChanged = { value ->
             touchpadView.scrollSensitivity = value
             prefs.edit().putFloat(KEY_SCROLL_SENSITIVITY, value).apply()
+        }
+
+        sheet.onDragLockToggled = { enabled ->
+            touchpadView.enableDragLock = enabled
+            prefs.edit().putBoolean(KEY_ENABLE_DRAG_LOCK, enabled).apply()
         }
 
         sheet.onDiagnoseClicked = {

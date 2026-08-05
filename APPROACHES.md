@@ -4,6 +4,37 @@ Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 �
 
 ---
 
+## Drag redesign: double-tap-and-hold, replacing two-finger drag
+
+Goal: make the touchpad feel closer to a laptop trackpad (smoothing, momentum scrolling,
+horizontal + natural-direction scrolling, and a better single-finger drag trigger than the
+disabled quick-tap-then-hold from earlier).
+
+The earlier quick-tap-then-hold was disabled because arming only checked *time* since the last
+tap (any touch within 400ms), which is nearly identical to ordinary "click, then move, then
+click again" usage. This redesign requires the second touch to also land *near the same
+position* as the first (true double-tap semantics, matching macOS's own "Drag Lock"
+accessibility feature) — a much more deliberate, distinguishable signal that shouldn't collide
+with clicking in two different spots in quick succession.
+
+Behavior, by request: replaces the two-finger hold+add-finger drag entirely (toggle in Settings,
+`enableDragLock`, default on). Ends *only* via a second matching double-tap for now — not by
+lifting the dragging finger — since that's simpler to disambiguate correctly on the first pass.
+Lift-to-end can be added later if double-tap-only proves confusing in practice; the state
+(`isDragMode`) already persists correctly across lift/re-touch cycles, so adding it is a small
+extension rather than a redesign.
+
+**Not yet verified on physical hardware** — this is a real state-machine change (drag state now
+persists across touch sessions, which required removing the old per-gesture `isDragMode` reset)
+plus a HID report/descriptor change (added a 5th byte for horizontal scroll / AC Pan). Needs
+hands-on testing for: does the double-tap arm/end reliably without false positives or negatives,
+does horizontal scroll actually scroll horizontally, does momentum feel natural or too
+floaty/abrupt (tuned constants: `momentumDecay=0.93`, `momentumMinVelocity=0.3`,
+`smoothingAlpha=0.55` — all likely need on-device tuning), and does `naturalScrolling=true`
+match the intended direction (implemented as a sign flip; trivial to invert if backwards).
+
+---
+
 ## Touching the phone screen dismisses focused/open UI on the external display
 
 **Symptoms**: re-selecting a point in an already-focused text field hid the keyboard; moving
