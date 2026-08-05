@@ -10,6 +10,8 @@ interface IInputService {
     oneway void startDrag(int displayId);
     oneway void endDrag(int displayId);
     oneway void sendKeyEvent(int displayId, int keyCode);
+    oneway void sendText(int displayId, String text);
+    oneway void sendBackspace(int displayId, int count);
     oneway void sendShellCommand(int displayId, String command);
     String diagnose(int externalDisplayId);
     oneway void destroy();

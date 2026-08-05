@@ -33,7 +33,7 @@ PointerController (system cursor on the display)
 
 ### 2. InputService (`InputService.kt`)
 - Shizuku UserService – runs in a separate process with shell privileges (UID 2000)
-- AIDL methods (oneway): associateWithDisplay, setKeyboardOnInternalDisplay, moveCursor, click, rightClick, scroll, startDrag, endDrag, sendKeyEvent, sendShellCommand, destroy
+- AIDL methods (oneway): associateWithDisplay, setKeyboardOnInternalDisplay, moveCursor, click, rightClick, scroll, startDrag, endDrag, sendKeyEvent, sendText, sendBackspace, sendShellCommand, destroy
 - AIDL methods (synchronous): diagnose
 - Strategy: UHID > sendevent > shell input (fallback)
 - UHID report: buttons(1) + X(1) + Y(1) + wheel(1) + hwheel/AC Pan(1) = 5 bytes
@@ -88,6 +88,7 @@ See [BUILD.md](BUILD.md) for local build instructions (x86_64 Linux).
 │   ├── java/.../InputService.kt    # Shizuku UserService (UHID + shell)
 │   ├── java/.../MainActivity.kt    # UI + setup + settings
 │   ├── java/.../TouchpadView.kt    # Touch gestures
+│   ├── java/.../KeyboardCaptureView.kt  # Invisible view holding the manual IME session
 │   ├── java/.../SettingsBottomSheet.kt  # Settings panel
 │   └── res/
 │       ├── layout/activity_main.xml          # Fullscreen layout

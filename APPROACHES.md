@@ -4,6 +4,48 @@ Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 �
 
 ---
 
+## Manual keyboard toggle vs. the earlier FLAG_NOT_FOCUSABLE fix
+
+Goal: a button to summon the phone's own software keyboard on demand and relay keystrokes to
+the external display, for apps there that never trigger Android's own focus-based IME routing
+(e.g. remote desktop/VNC clients rendering their own content, not a native `EditText`).
+
+This directly collides with the earlier focus-stealing fix (`MainActivity`'s window is
+`FLAG_NOT_FOCUSABLE`, so touching it doesn't steal system focus from the external display).
+Android's own docs on that flag are explicit: "Setting this flag also implies that the window
+will not need to interact with a soft input method" — a `FLAG_NOT_FOCUSABLE` window categorically
+cannot summon a keyboard on its own.
+
+### `FLAG_ALT_FOCUSABLE_IM` — ✅ IMPLEMENTED
+Adding `WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM` alongside `FLAG_NOT_FOCUSABLE` is the
+standard, documented Android combination for exactly this situation: the window still doesn't
+take normal system focus (preserving the earlier fix), but can still summon/interact with the
+IME when explicitly requested via `showSoftInput()`.
+
+**Not yet verified on physical hardware, in either direction**: does the keyboard actually
+appear when toggled, and — just as important — does the original focus-stealing bug (text
+field reposition, window-decoration menu dismissal on touch) stay fixed with this flag added.
+This touches the exact mechanism that fix depends on, so it needs the same test matrix used to
+diagnose that bug originally, not just a fresh check of the new feature.
+
+To actually relay keystrokes without a real focused text field anywhere in this app, added
+`KeyboardCaptureView` — an invisible focusable `View` whose custom `InputConnection` (extending
+`BaseInputConnection`) intercepts `commitText`/`setComposingText`/`deleteSurroundingText`/
+`sendKeyEvent`/`performEditorAction` and forwards them via two new AIDL methods, `sendText` and
+`sendBackspace`. `setComposingText` updates are diffed against what was last seen rather than
+forwarded verbatim, since predictive keyboards (Gboard) stream the in-progress word through it
+repeatedly as you type or autocorrect — naive forwarding would retype the whole word every
+keystroke instead of just the new character.
+
+`sendText` deliberately does **not** go through the existing `execShell` helper (`sh -c
+"<string>"`) — concatenating arbitrary user-typed text into a shell command string is a command-
+injection risk (a typed backtick or `$(...)` could execute as a shell command under shell UID).
+Added `execDirect`, which calls `Runtime.getRuntime().exec(String[])` directly with the typed
+text as a single argv element — no shell parsing involved, so its content can't break out
+regardless of what characters it contains.
+
+---
+
 ## Drag redesign: double-tap-and-hold, replacing two-finger drag
 
 Goal: make the touchpad feel closer to a laptop trackpad (smoothing, momentum scrolling,

@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.view.Display
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.TextView
@@ -54,6 +55,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var setupPanel: View
     private lateinit var btnConnect: Button
     private lateinit var btnSettings: ImageButton
+    private lateinit var btnKeyboard: ImageButton
+    private lateinit var keyboardCaptureView: KeyboardCaptureView
+    private var keyboardVisible = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -118,7 +122,13 @@ class MainActivity : AppCompatActivity() {
         // Touching this window shouldn't steal system input focus away from whatever's
         // focused on the external display (a text field's IME connection, an open menu,
         // etc.) - we only ever need touch here, never keyboard/IME focus of our own.
-        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        // FLAG_ALT_FOCUSABLE_IM alongside it is the standard Android combination that still
+        // allows explicitly summoning the IME (see keyboardCaptureView/toggleKeyboard) despite
+        // FLAG_NOT_FOCUSABLE otherwise blocking all soft-keyboard interaction.
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+        )
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
@@ -127,9 +137,12 @@ class MainActivity : AppCompatActivity() {
         setupPanel = findViewById(R.id.setupPanel)
         btnConnect = findViewById(R.id.btnConnect)
         btnSettings = findViewById(R.id.btnSettings)
+        btnKeyboard = findViewById(R.id.btnKeyboard)
+        keyboardCaptureView = findViewById(R.id.keyboardCaptureView)
 
         touchpadView.visibility = View.GONE
         btnSettings.visibility = View.GONE
+        btnKeyboard.visibility = View.GONE
 
         // Load persisted sensitivity
         touchpadView.sensitivity = prefs.getFloat(KEY_CURSOR_SENSITIVITY, DEFAULT_CURSOR_SENS)
@@ -138,6 +151,20 @@ class MainActivity : AppCompatActivity() {
 
         btnConnect.setOnClickListener { startSetup() }
         btnSettings.setOnClickListener { openSettings() }
+        btnKeyboard.setOnClickListener { toggleKeyboard() }
+
+        keyboardCaptureView.onTextCommitted = { text ->
+            try { inputService?.sendText(externalDisplayId, text) }
+            catch (e: Exception) { lastError = "Text: ${e.message}" }
+        }
+        keyboardCaptureView.onDeleteBefore = { count ->
+            try { inputService?.sendBackspace(externalDisplayId, count) }
+            catch (e: Exception) { lastError = "Backspace: ${e.message}" }
+        }
+        keyboardCaptureView.onSpecialKey = { keyCode ->
+            try { inputService?.sendKeyEvent(externalDisplayId, keyCode) }
+            catch (e: Exception) { lastError = "Key: ${e.message}" }
+        }
 
         Shizuku.addRequestPermissionResultListener(permissionResultListener)
         val dm = getSystemService(DisplayManager::class.java)
@@ -317,6 +344,7 @@ class MainActivity : AppCompatActivity() {
         touchpadView.visibility = View.VISIBLE
         setupPanel.visibility = View.GONE
         btnSettings.visibility = View.VISIBLE
+        btnKeyboard.visibility = View.VISIBLE
         enableFullscreenMode()
     }
 
@@ -324,6 +352,26 @@ class MainActivity : AppCompatActivity() {
         touchpadView.visibility = View.GONE
         setupPanel.visibility = View.VISIBLE
         btnSettings.visibility = View.GONE
+        btnKeyboard.visibility = View.GONE
+        hideKeyboard()
+    }
+
+    private fun toggleKeyboard() {
+        val imm = getSystemService(InputMethodManager::class.java)
+        if (keyboardVisible) {
+            hideKeyboard()
+        } else {
+            keyboardCaptureView.requestFocus()
+            imm.showSoftInput(keyboardCaptureView, InputMethodManager.SHOW_FORCED)
+            keyboardVisible = true
+        }
+    }
+
+    private fun hideKeyboard() {
+        if (!keyboardVisible) return
+        val imm = getSystemService(InputMethodManager::class.java)
+        imm.hideSoftInputFromWindow(keyboardCaptureView.windowToken, 0)
+        keyboardVisible = false
     }
 
     private fun openSettings() {

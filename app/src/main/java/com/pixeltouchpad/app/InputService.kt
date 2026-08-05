@@ -287,6 +287,21 @@ class InputService : IInputService.Stub() {
         } catch (e: Exception) { Pair(-1, "Exception: ${e.message}") }
     }
 
+    // execShell always goes through "sh -c <string>" - fine for our own fixed commands, but
+    // NOT safe for arbitrary user-typed text (a backtick or `$(...)` in typed text would run as
+    // a shell command). execDirect passes args straight to exec() with no shell involved, so
+    // the text is just an opaque argv element regardless of what characters it contains.
+    private fun execDirect(args: Array<String>, timeoutMs: Long = 5000): Pair<Int, String> {
+        return try {
+            val process = Runtime.getRuntime().exec(args)
+            val finished = process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!finished) { process.destroyForcibly(); return Pair(-1, "TIMEOUT") }
+            val out = process.inputStream.bufferedReader().readText().trim()
+            val err = process.errorStream.bufferedReader().readText().trim()
+            Pair(process.exitValue(), if (err.isNotEmpty()) "$out\n$err".trim() else out)
+        } catch (e: Exception) { Pair(-1, "Exception: ${e.message}") }
+    }
+
     // ---- Display association (Android 15+) ----
     // A virtual UHID mouse has no display of its own; the system otherwise defaults
     // its pointer to the phone's built-in display. addUniqueIdAssociationByPort ties
@@ -486,6 +501,26 @@ class InputService : IInputService.Stub() {
             execShell(cmd, 3000)
         } catch (e: Exception) {
             lastSendError = "sendKeyEvent($keyCode): ${e.message}"
+        }
+    }
+
+    override fun sendText(displayId: Int, text: String) {
+        try {
+            // execDirect, not execShell: text is arbitrary user keystrokes, passed as a single
+            // argv element with no shell parsing involved (see execDirect's comment above).
+            val args = if (displayId > 0) arrayOf("input", "-d", displayId.toString(), "text", text)
+                       else arrayOf("input", "text", text)
+            execDirect(args, 3000)
+        } catch (e: Exception) {
+            lastSendError = "sendText: ${e.message}"
+        }
+    }
+
+    override fun sendBackspace(displayId: Int, count: Int) {
+        try {
+            repeat(count.coerceIn(1, 100)) { sendKeyEvent(displayId, 67) } // KEYCODE_DEL
+        } catch (e: Exception) {
+            lastSendError = "sendBackspace: ${e.message}"
         }
     }
 

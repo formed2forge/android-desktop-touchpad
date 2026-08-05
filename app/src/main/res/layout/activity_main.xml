@@ -71,4 +71,24 @@
         android:alpha="0.4"
         android:visibility="gone" />
 
+    <!-- Manual keyboard toggle (overlaid on touchpad, left of settings) -->
+    <ImageButton
+        android:id="@+id/btnKeyboard"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="60dp"
+        android:src="@android:drawable/ic_menu_edit"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Toggle keyboard"
+        android:alpha="0.4"
+        android:visibility="gone" />
+
+    <!-- Invisible view that exists only to hold a real IME session - see KeyboardCaptureView -->
+    <com.pixeltouchpad.app.KeyboardCaptureView
+        android:id="@+id/keyboardCaptureView"
+        android:layout_width="1px"
+        android:layout_height="1px" />
+
 </FrameLayout>
