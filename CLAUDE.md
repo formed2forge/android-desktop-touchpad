@@ -61,7 +61,7 @@ PointerController (system cursor on the display)
 | 2-finger tap | right click | rightClick | UHID BTN_RIGHT (bit 1 = 0x02) |
 | 2 fingers vertical | scroll | scroll | UHID REL_WHEEL |
 | 2-finger pinch | zoom | — | Ctrl+scroll (TBD) |
-| 1 holds + 2nd moves, *or* quick tap then hold same finger | drag | startDrag/endDrag | UHID button=1 hold |
+| 1 holds + 2nd moves, *or* quick tap then hold same finger (disabled by default, see `enableTapThenHold`) | drag | startDrag/endDrag | UHID button=1 hold |
 | 3 fingers left | Back | sendKeyEvent(4) | `input keyevent 4` |
 | 3 fingers right | Task manager | sendKeyEvent(187) | `input keyevent 187` |
 | 3 fingers up | App drawer | sendKeyEvent(284) | `input keyevent 284` |

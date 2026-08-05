@@ -4,6 +4,30 @@ Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 �
 
 ---
 
+## Quick-tap-then-hold regression — ✅ DISABLED BY DEFAULT
+
+After shipping quick-tap-then-hold (tap, release, press-and-hold the same spot to start a
+single-finger drag), two unrelated interactions broke on-device:
+- Typing into a focused text field, then using the cursor to reposition within that same
+  field, made the on-screen keyboard disappear until the field was deselected/reselected.
+- Opening the desktop window-decoration menu, then moving the cursor toward a submenu item,
+  closed the menu immediately on the first tap that started the move.
+
+**Root cause**: the feature arms a hold-check on *every* touch-down within `tapThenHoldWindow`
+(400ms) of a previous tap's release. Ordinary "click, then move the cursor elsewhere, then
+click again" usage is a near-identical touch pattern — click, quickly touch down again, brief
+pause before the swipe really gets moving. If that brief pause exceeds `dragHoldTime` (250ms)
+within `tapMaxDistance` (30px), the code fires `onDragStart`, sending a **mouse-button-down**
+via UHID at wherever the cursor happened to be *before* the intended move — which reads to the
+IME/menu as a click outside the field/menu, hiding or closing it. There's no clean way to
+disambiguate the two patterns from timing alone; they look identical at the start.
+
+**Fix**: gated the feature behind `TouchpadView.enableTapThenHold`, defaulted to `false`. All
+the supporting code (arming, the delayed check, cancellation) is left in place in case the
+timing gets revisited later — only the single call site that arms it is guarded.
+
+---
+
 ## Approaches to cursor movement
 
 ### 1. InputManager.getInstance() + injectInputEvent (reflection)

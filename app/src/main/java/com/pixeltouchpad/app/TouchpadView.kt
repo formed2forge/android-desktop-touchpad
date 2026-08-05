@@ -23,7 +23,10 @@ import kotlin.math.sqrt
  * - 2 finger same direction: scroll
  * - 2 finger pinch (distance changes): zoom (Ctrl+scroll)
  * - 1 finger hold + 2nd finger added: drag (hold left button + move)
- * - quick tap then hold with the same finger: drag (hold left button + move), released on lift
+ * - quick tap then hold with the same finger: drag (hold left button + move), released on lift.
+ *   Disabled by default (see [enableTapThenHold]) - its timing window can't be reliably told
+ *   apart from ordinary "click, then move, then click again" usage, which made it misfire and
+ *   start a spurious button-hold (e.g. dismissing menus, hiding the keyboard mid-interaction).
  * - 3 finger swipe L/R/U/D: back / recent / app drawer / notifications
  */
 class TouchpadView @JvmOverloads constructor(
@@ -37,6 +40,7 @@ class TouchpadView @JvmOverloads constructor(
     // --- Configuration ---
     var sensitivity = 1.5f
     var scrollSensitivity = 0.08f
+    var enableTapThenHold = false
     private val tapMaxDuration = 200L   // ms
     private val tapMaxDistance = 30f     // px
     private val moveDeadzone = 3f        // px, raw finger jitter filter before cursor moves
@@ -165,7 +169,7 @@ class TouchpadView @JvmOverloads constructor(
 
                 // Quick tap followed shortly by pressing down again = arm a hold check.
                 // If this same finger stays roughly still past dragHoldTime, start a drag.
-                if (touchStartTime - lastTapUpTime < tapThenHoldWindow) {
+                if (enableTapThenHold && touchStartTime - lastTapUpTime < tapThenHoldWindow) {
                     val armX = event.x
                     val armY = event.y
                     val check = Runnable {
