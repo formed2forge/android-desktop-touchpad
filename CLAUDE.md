@@ -33,7 +33,7 @@ PointerController (system cursor on the display)
 
 ### 2. InputService (`InputService.kt`)
 - Shizuku UserService – runs in a separate process with shell privileges (UID 2000)
-- AIDL methods (oneway): associateWithDisplay, moveCursor, click, rightClick, scroll, startDrag, endDrag, sendKeyEvent, sendShellCommand, destroy
+- AIDL methods (oneway): associateWithDisplay, setKeyboardOnInternalDisplay, moveCursor, click, rightClick, scroll, startDrag, endDrag, sendKeyEvent, sendShellCommand, destroy
 - AIDL methods (synchronous): diagnose
 - Strategy: UHID > sendevent > shell input (fallback)
 - UHID report: buttons(1) + X(1) + Y(1) + wheel(1) = 4 bytes

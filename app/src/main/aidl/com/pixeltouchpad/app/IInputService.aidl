@@ -2,6 +2,7 @@ package com.pixeltouchpad.app;
 
 interface IInputService {
     oneway void associateWithDisplay(int displayId);
+    oneway void setKeyboardOnInternalDisplay(int externalDisplayId);
     oneway void moveCursor(int displayId, float x, float y);
     oneway void click(int displayId, float x, float y);
     oneway void rightClick(int displayId, float x, float y);

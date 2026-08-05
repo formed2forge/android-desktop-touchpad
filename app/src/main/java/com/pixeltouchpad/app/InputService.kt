@@ -329,6 +329,41 @@ class InputService : IInputService.Stub() {
         }
     }
 
+    // ---- Keyboard-on-internal-display (IWindowManager.setDisplayImePolicy) ----
+    // By default the IME shows on whichever display has the focused text field, which is
+    // the external display for anything typed into the desktop. The external monitor has
+    // no touch, so redirect the IME to fall back to the phone's own (default) display instead.
+
+    @Volatile private var lastImePolicyResult: String? = null
+
+    private fun getWindowManager(): Any? {
+        val binder = Class.forName("android.os.ServiceManager")
+            .getMethod("getService", String::class.java)
+            .invoke(null, "window") as? IBinder ?: return null
+        return Class.forName("android.view.IWindowManager\$Stub")
+            .getMethod("asInterface", IBinder::class.java)
+            .invoke(null, binder)
+    }
+
+    override fun setKeyboardOnInternalDisplay(externalDisplayId: Int) {
+        try {
+            val windowManager = getWindowManager()
+                ?: throw IllegalStateException("could not obtain IWindowManager")
+
+            val fallbackPolicy = android.view.WindowManager::class.java
+                .getField("DISPLAY_IME_POLICY_FALLBACK_DISPLAY").getInt(null)
+
+            windowManager.javaClass
+                .getMethod("setDisplayImePolicy", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                .invoke(windowManager, externalDisplayId, fallbackPolicy)
+
+            lastImePolicyResult = "OK: display=$externalDisplayId -> FALLBACK_DISPLAY (policy=$fallbackPolicy)"
+        } catch (e: Exception) {
+            lastImePolicyResult = "FAILED: ${e.message}"
+            lastSendError = "setKeyboardOnInternalDisplay: ${e.message}"
+        }
+    }
+
     // ---- AIDL implementation ----
 
     override fun moveCursor(displayId: Int, x: Float, y: Float) {
@@ -469,6 +504,7 @@ class InputService : IInputService.Stub() {
         sb.appendLine("lastSendError: $lastSendError")
         sb.appendLine("uhidPhys: $uhidPhys")
         sb.appendLine("lastAssociationResult: $lastAssociationResult")
+        sb.appendLine("lastImePolicyResult: $lastImePolicyResult")
         sb.appendLine()
 
         // Init log

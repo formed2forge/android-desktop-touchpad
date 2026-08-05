@@ -112,6 +112,32 @@ exist — so the pointer falls back to the default (built-in) display.
   reflection can only be confirmed by actually running it on the Pixel 8 Pro. `diagnose()` now
   reports `uhidPhys` and `lastAssociationResult` for on-device debugging if it doesn't work.
 
+## Approaches to keyboard (IME) display routing
+
+**Ask**: when a text field on the external display gets focus, the on-screen keyboard pops up
+*on the external display* — useless, since that monitor has no touch. Want it on the phone's
+own screen instead, while keystrokes still go to the focused field on the external display.
+
+### `IWindowManager.setDisplayImePolicy` (hidden system API) ✅ IMPLEMENTED
+- Documented in AOSP's own multi-display IME support page
+  (source.android.com/docs/core/display/multi_display/ime-support): the IME shows on the
+  focused window's display, or falls back to the default display, based on a per-display
+  policy set via `WindowManager#setDisplayImePolicy(displayId, policy)` /
+  `getDisplayImePolicy(displayId)` — this is display-level system config, not something an
+  app can influence just by how it builds its own window.
+- Confirmed via `scrcpy`'s PR [#5703](https://github.com/Genymobile/scrcpy/pull/5703), which
+  added a `--display-ime-policy` flag doing exactly this from their adb-shell server process —
+  same execution context as our Shizuku UserService, so shell UID should already hold whatever
+  permission this needs (same pattern as `addUniqueIdAssociationByPort` above).
+- Mechanics: `ServiceManager.getService("window")` → `IWindowManager.Stub.asInterface(...)` →
+  reflectively call `setDisplayImePolicy(externalDisplayId, DISPLAY_IME_POLICY_FALLBACK_DISPLAY)`.
+  The policy constant is read via reflection off `android.view.WindowManager`'s own field rather
+  than hardcoded, in case its integer value ever changes across API levels.
+- Called once, right alongside `associateWithDisplay`, whenever `MainActivity` detects the
+  external display — sets the *external* display's policy to fall back to the default
+  (internal) display for IME purposes.
+- **Not yet verified on physical hardware.** `diagnose()` now reports `lastImePolicyResult`.
+
 ### "Universal cursor" setting (Settings → Connected devices → External displays → built-in
 display → toggle, only visible when "Mirror built-in display" is off) — ✅ ROOT CAUSE FOUND
 

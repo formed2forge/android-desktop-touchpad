@@ -290,6 +290,9 @@ class MainActivity : AppCompatActivity() {
             try { inputService?.associateWithDisplay(externalDisplayId) }
             catch (e: Exception) { lastError = "AssociateDisplay: ${e.message}" }
 
+            try { inputService?.setKeyboardOnInternalDisplay(externalDisplayId) }
+            catch (e: Exception) { lastError = "ImePolicy: ${e.message}" }
+
             showTouchpad()
         } else {
             showSetupPanel()
