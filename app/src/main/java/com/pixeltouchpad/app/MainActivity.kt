@@ -124,13 +124,12 @@ class MainActivity : AppCompatActivity() {
         // Touching this window shouldn't steal system input focus away from whatever's
         // focused on the external display (a text field's IME connection, an open menu,
         // etc.) - we only ever need touch here, never keyboard/IME focus of our own.
-        // FLAG_ALT_FOCUSABLE_IM alongside it is the standard Android combination that still
-        // allows explicitly summoning the IME (see keyboardCaptureView/toggleKeyboard) despite
-        // FLAG_NOT_FOCUSABLE otherwise blocking all soft-keyboard interaction.
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
-        )
+        // Cleared temporarily by toggleKeyboard()/hideKeyboard() while the manual keyboard is
+        // actually in use: showSoftInput() needs real window focus to attach at all (a static
+        // FLAG_ALT_FOCUSABLE_IM combo was tried first and didn't reliably work - the window
+        // still needs genuine focus for View.requestFocus() to matter for IME purposes, not
+        // just "IME-interaction allowed despite not being focusable").
+        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
@@ -360,12 +359,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleKeyboard() {
-        val imm = getSystemService(InputMethodManager::class.java)
         if (keyboardVisible) {
             hideKeyboard()
         } else {
-            keyboardCaptureView.requestFocus()
-            imm.showSoftInput(keyboardCaptureView, InputMethodManager.SHOW_FORCED)
+            // Briefly allow real window focus so the IME can actually attach - a static
+            // FLAG_ALT_FOCUSABLE_IM combo didn't reliably work; requestFocus()/showSoftInput()
+            // need genuine window focus, not just "IME interaction allowed while unfocusable."
+            // Restored in hideKeyboard() so ordinary touchpad gestures go back to not stealing
+            // focus from the external display.
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            keyboardCaptureView.post {
+                keyboardCaptureView.requestFocus()
+                val imm = getSystemService(InputMethodManager::class.java)
+                imm.showSoftInput(keyboardCaptureView, InputMethodManager.SHOW_FORCED)
+            }
             keyboardVisible = true
         }
     }
@@ -375,6 +382,7 @@ class MainActivity : AppCompatActivity() {
         val imm = getSystemService(InputMethodManager::class.java)
         imm.hideSoftInputFromWindow(keyboardCaptureView.windowToken, 0)
         keyboardVisible = false
+        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
     }
 
     private fun openSettings() {

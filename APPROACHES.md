@@ -68,17 +68,29 @@ Android's own docs on that flag are explicit: "Setting this flag also implies th
 will not need to interact with a soft input method" — a `FLAG_NOT_FOCUSABLE` window categorically
 cannot summon a keyboard on its own.
 
-### `FLAG_ALT_FOCUSABLE_IM` — ✅ IMPLEMENTED
-Adding `WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM` alongside `FLAG_NOT_FOCUSABLE` is the
-standard, documented Android combination for exactly this situation: the window still doesn't
-take normal system focus (preserving the earlier fix), but can still summon/interact with the
-IME when explicitly requested via `showSoftInput()`.
+### `FLAG_ALT_FOCUSABLE_IM` (static combo) — ❌ DIDN'T WORK
+First attempt: add `WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM` alongside
+`FLAG_NOT_FOCUSABLE` permanently. Android's docs describe this as the standard combination for
+"window doesn't take normal focus, but can still interact with the IME" — but confirmed
+on-device, the keyboard toggle simply didn't do anything.
 
-**Not yet verified on physical hardware, in either direction**: does the keyboard actually
-appear when toggled, and — just as important — does the original focus-stealing bug (text
-field reposition, window-decoration menu dismissal on touch) stay fixed with this flag added.
-This touches the exact mechanism that fix depends on, so it needs the same test matrix used to
-diagnose that bug originally, not just a fresh check of the new feature.
+Digging further: `showSoftInput()` still requires the *window* to have genuine focus for
+`View.requestFocus()` to matter for IME-attachment purposes — `FLAG_ALT_FOCUSABLE_IM` inverts
+whether a window is *allowed* to interact with the IME, but doesn't itself grant real window
+focus. A static flag combination can't satisfy both "never takes real focus" and "has real
+focus when needed" at the same time.
+
+### Dynamically toggling `FLAG_NOT_FOCUSABLE` — ✅ IMPLEMENTED
+Instead of a static flag combo, `toggleKeyboard()` now clears `FLAG_NOT_FOCUSABLE` right before
+`requestFocus()`/`showSoftInput()` (deferred one frame via `View.post` so the flag change has
+taken effect first), and `hideKeyboard()` restores it afterward. This means the earlier
+focus-stealing protection is only *temporarily* relaxed for the deliberate, explicit act of
+opening the keyboard — not permanently weakened — and ordinary touchpad gestures keep the
+original protection once the keyboard is closed again.
+
+**Not yet verified on physical hardware**: does the keyboard now actually appear, and does the
+protection reliably restore itself on hide (no regression back to the original focus-stealing
+bug once the keyboard is dismissed).
 
 To actually relay keystrokes without a real focused text field anywhere in this app, added
 `KeyboardCaptureView` — an invisible focusable `View` whose custom `InputConnection` (extending
