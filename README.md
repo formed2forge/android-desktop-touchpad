@@ -1,32 +1,36 @@
 # Pixel Touchpad
 
-Minimální Android aplikace, která promění displej telefonu ve virtuální touchpad pro ovládání kurzoru na externím monitoru (desktop mode).
+A minimal Android app that turns a phone's display into a virtual touchpad for controlling the cursor on an external monitor (desktop mode).
 
-## Funkce
+## Features
 
-- **Pohyb kurzoru** – jeden prst, relativní pohyb jako na notebookovém touchpadu
-- **Klik** – krátké ťuknutí jedním prstem
-- **Scroll** – vertikální tah dvěma prsty
+- **Cursor movement** – one finger, relative movement like a laptop touchpad
+- **Click** – short one-finger tap
+- **Scroll** – two-finger vertical drag
 
-## Požadavky
+## Requirements
 
-- Android 9+ (Pixel 8 s Android 15/16 ideální)
-- [Shizuku](https://github.com/RikkaApps/Shizuku/releases) nainstalovaný a spuštěný
-- Externí displej připojený přes USB-C
+- Android 9+ (Pixel 8 with Android 15/16 ideal)
+- [Shizuku](https://github.com/RikkaApps/Shizuku/releases) installed and running
+- External display connected via USB-C
 
-## Jak to funguje
+## How it works
 
-1. Aplikace se připojí k Shizuku a spustí privilegovanou službu
-2. Služba používá `InputManager.injectInputEvent()` k vkládání mouse eventů na sekundární displej
-3. TouchpadView na telefonu zachytává dotykové gesta a překládá je na pohyb kurzoru
+1. The app connects to Shizuku and starts a privileged service
+2. The service uses `InputManager.injectInputEvent()` to inject mouse events on the secondary display
+3. TouchpadView on the phone captures touch gestures and translates them into cursor movement
 
-## Build přes GitHub Actions
+## Local build
 
-### 1. Vytvoř repozitář na GitHubu
+To build directly on your own x86_64 Linux machine (no waiting on CI), see [BUILD.md](BUILD.md).
 
-Jdi na [github.com/new](https://github.com/new) a vytvoř nový repozitář (např. `PixelTouchpad`).
+## Build via GitHub Actions
 
-### 2. Nahraj kód
+### 1. Create a repository on GitHub
+
+Go to [github.com/new](https://github.com/new) and create a new repository (e.g. `PixelTouchpad`).
+
+### 2. Push the code
 
 ```bash
 cd PixelTouchpad
@@ -34,52 +38,52 @@ git init
 git add .
 git commit -m "Initial commit"
 git branch -M main
-git remote add origin https://github.com/TVUJ_USERNAME/PixelTouchpad.git
+git remote add origin https://github.com/YOUR_USERNAME/PixelTouchpad.git
 git push -u origin main
 ```
 
-### 3. Počkej na build
+### 3. Wait for the build
 
-- Jdi na záložku **Actions** v repozitáři
-- Build se spustí automaticky po push
-- Po dokončení (cca 3-5 minut) klikni na run → **Artifacts** → stáhni `PixelTouchpad-debug.zip`
+- Go to the **Actions** tab in the repository
+- The build starts automatically on push
+- Once done (about 3-5 minutes), click the run → **Artifacts** → download `PixelTouchpad-debug.zip`
 
-### 4. Nainstaluj na telefon
+### 4. Install on the phone
 
-- Rozbal ZIP – uvnitř je `.apk` soubor
-- Přenes na telefon a nainstaluj (povol instalaci z neznámých zdrojů)
+- Unzip the ZIP – it contains an `.apk` file
+- Transfer it to the phone and install it (allow installs from unknown sources)
 
-## Použití
+## Usage
 
-1. Spusť **Shizuku** a aktivuj službu (Wireless debugging)
-2. Připoj monitor přes USB-C kabel
-3. Zapni **desktop mode** v Developer options
-4. Otevři **Pixel Touchpad**
-5. Klikni **Připojit** – appka se připojí k Shizuku a najde externí displej
-6. Touchpad se aktivuje – pohybuj prstem po displeji telefonu
+1. Start **Shizuku** and activate the service (Wireless debugging)
+2. Connect the monitor via a USB-C cable
+3. Turn on **desktop mode** in Developer options
+4. Open **Pixel Touchpad**
+5. Tap **Connect** – the app connects to Shizuku and finds the external display
+6. The touchpad activates – move your finger across the phone's display
 
-## Úpravy
+## Customization
 
-### Citlivost touchpadu
-V `TouchpadView.kt`:
+### Touchpad sensitivity
+In `TouchpadView.kt`:
 ```kotlin
-var sensitivity = 2.5f        // rychlost kurzoru
-var scrollSensitivity = 0.03f // rychlost scrollu
+var sensitivity = 2.5f        // cursor speed
+var scrollSensitivity = 0.03f // scroll speed
 ```
 
-### Detekce kliknutí
-V `TouchpadView.kt`:
+### Click detection
+In `TouchpadView.kt`:
 ```kotlin
-private val tapMaxDuration = 200L   // max doba dotyku pro klik (ms)
-private val tapMaxDistance = 30f     // max pohyb prstu pro klik (px)
+private val tapMaxDuration = 200L   // max touch duration for a click (ms)
+private val tapMaxDistance = 30f     // max finger movement for a click (px)
 ```
 
-## Známé limitace
+## Known limitations
 
-- Kurzor se po restartu appky vrátí doprostřed displeje
-- Nemá pravé tlačítko myši (lze přidat jako long-press nebo tří-prstové ťuknutí)
-- Vyžaduje restart Shizuku po restartu telefonu
+- The cursor resets to the middle of the display after an app restart
+- No right mouse button (could be added as a long-press or two-finger tap)
+- Requires restarting Shizuku after a phone restart
 
-## Licence
+## License
 
-MIT – dělej si s tím co chceš.
+MIT – do whatever you want with it.

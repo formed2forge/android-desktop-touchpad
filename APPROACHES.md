@@ -1,82 +1,82 @@
-# Vyzkoušené přístupy – log
+# Tested approaches – log
 
-Zařízení: Pixel 8 Pro, Android 16 (SDK 36), Shizuku UID 2000
+Device: Pixel 8 Pro, Android 16 (SDK 36), Shizuku UID 2000
 
 ---
 
-## Přístupy k pohybu kurzoru
+## Approaches to cursor movement
 
 ### 1. InputManager.getInstance() + injectInputEvent (reflection)
-- **Stav: NEFUNGUJE**
-- `InputManager.getInstance()` bylo odstraněno v Android 16 SDK 36
-- Metoda neexistuje → `NoSuchMethodException`
+- **Status: DOESN'T WORK**
+- `InputManager.getInstance()` was removed in Android 16 SDK 36
+- The method doesn't exist → `NoSuchMethodException`
 
 ### 2. InputManagerGlobal.getInstance() + injectInputEvent
-- **Stav: NEFUNGUJE (vrací true, ale kurzor se nepohne)**
-- `Class.forName("android.hardware.input.InputManagerGlobal")` funguje
-- 2-arg i 3-arg `injectInputEvent()` vrací `true` na displayId 0 i 197
-- **Problém**: MotionEvent injekce doručuje eventy do oken, ale NEPOHYBUJE systémovým kurzorem. PointerController čte pouze z kernel input devices.
+- **Status: DOESN'T WORK (returns true, but the cursor doesn't move)**
+- `Class.forName("android.hardware.input.InputManagerGlobal")` works
+- Both the 2-arg and 3-arg `injectInputEvent()` return `true` on displayId 0 and 197
+- **Problem**: MotionEvent injection delivers events to windows but does NOT move the system cursor. PointerController only reads from kernel input devices.
 
 ### 3. Instrumentation.sendPointerSync()
-- **Stav: NEFUNGUJE**
+- **Status: DOESN'T WORK**
 - `SecurityException`: "not directed at window owned by uid 2000"
 
-### 4. Shell `input` příkazy
-- **`input -d <displayId> tap X Y`**: FUNGUJE pro tap/klik
-- **`input motionevent HOVER_MOVE X Y`**: NEFUNGUJE — `IllegalArgumentException`
-- **`input mouse move X Y`**: NEFUNGUJE — "Unknown command: mouse"
-- **`input keyevent <code>`**: FUNGUJE — pro navigační akce (Back, Home, Recent, All Apps)
-- **`cmd statusbar expand-notifications`**: NETESTOVÁNO — pro notifikační lištu
+### 4. Shell `input` commands
+- **`input -d <displayId> tap X Y`**: WORKS for tap/click
+- **`input motionevent HOVER_MOVE X Y`**: DOESN'T WORK — `IllegalArgumentException`
+- **`input mouse move X Y`**: DOESN'T WORK — "Unknown command: mouse"
+- **`input keyevent <code>`**: WORKS — for navigation actions (Back, Home, Recent, All Apps)
+- **`cmd statusbar expand-notifications`**: UNTESTED — for the notification shade
 
-### 5. /dev/uhid – Virtual HID Mouse ✅ FUNGUJE
-- **Stav: FUNGUJE (aktuální strategie)**
-- UHID_CREATE2 vytvoří virtuální HID myš přes `/dev/uhid`
+### 5. /dev/uhid – Virtual HID Mouse ✅ WORKS
+- **Status: WORKS (current strategy)**
+- UHID_CREATE2 creates a virtual HID mouse via `/dev/uhid`
 - HID report descriptor: 3-button relative mouse + wheel (52 bytes)
-- Kurzor se zobrazí a pohybuje na externím displeji
-- **Vyřešené bugy:**
-  - Synchronní AIDL + flush() → app freeze → oprava: `oneway` AIDL, odebrání flush()
-  - @Synchronized na AIDL metodách → binder thread starvation → oprava: @Synchronized pouze na sendMouseReport()
-  - Nekonečná smyčka v uhidMove() → `toInt()` zaokrouhloval 0.5–0.99 na 0 → oprava: `round()` + break guard
-  - Report counter: 3,298,750 reportů při 2 voláních moveCursor = důkaz infinite loop
+- The cursor appears and moves on the external display
+- **Bugs fixed:**
+  - Synchronous AIDL + flush() → app freeze → fix: `oneway` AIDL, removed flush()
+  - @Synchronized on AIDL methods → binder thread starvation → fix: @Synchronized only on sendMouseReport()
+  - Infinite loop in uhidMove() → `toInt()` rounded 0.5–0.99 down to 0 → fix: `round()` + break guard
+  - Report counter: 3,298,750 reports for 2 calls to moveCursor = proof of the infinite loop
 
 ### 6. /dev/uinput – Virtual Input Device
-- **Stav: NETESTOVÁNO (dostupné)**
-- `/dev/uinput` existuje a je writable pro shell (UID 2000)
-- Vyžaduje ioctl() → potřeba JNI nebo C binary
-- Odloženo — UHID funguje
+- **Status: UNTESTED (available)**
+- `/dev/uinput` exists and is writable by shell (UID 2000)
+- Requires ioctl() → needs JNI or a C binary
+- Deferred — UHID works
 
-### 7. sendevent shell příkaz
-- **Stav: IMPLEMENTOVÁNO jako fallback**
+### 7. sendevent shell command
+- **Status: IMPLEMENTED as a fallback**
 - `sendevent /dev/input/eventN EV_REL REL_X value` etc.
-- Pomalejší než UHID (shell overhead), ale funkční jako záloha
+- Slower than UHID (shell overhead), but functional as a backup
 
 ### 8. AccessibilityService
-- **Stav: NEVYZKOUŠENO**
-- GestureDescription API — pravděpodobně nepodporuje sekundární displej
-- Nepotřebuje Shizuku, ale omezené možnosti
+- **Status: NOT TRIED**
+- GestureDescription API — probably doesn't support a secondary display
+- Doesn't need Shizuku, but limited capabilities
 
 ---
 
-## Přístupy k AIDL komunikaci
+## Approaches to AIDL communication
 
-### Synchronní AIDL
-- **NEFUNGUJE** — blokuje UI thread, app zamrzne při rychlém pohybu
+### Synchronous AIDL
+- **DOESN'T WORK** — blocks the UI thread, the app freezes on fast movement
 
 ### Oneway AIDL ✅
-- **FUNGUJE** — fire-and-forget, UI thread se neblokuje
-- `diagnose()` zůstává synchronní (vrací String)
+- **WORKS** — fire-and-forget, the UI thread doesn't block
+- `diagnose()` stays synchronous (returns a String)
 
-### @Synchronized na AIDL metodách
-- **NEFUNGUJE** — binder thread starvation, diagnose() se nikdy nedostane ke slovu
-- Oprava: @Synchronized pouze na sendMouseReport() (chrání fd write)
+### @Synchronized on AIDL methods
+- **DOESN'T WORK** — binder thread starvation, diagnose() never gets a turn
+- Fix: @Synchronized only on sendMouseReport() (protects the fd write)
 
 ---
 
-## Klíčové nálezy
+## Key findings
 
-1. **DisplayId není sekvenční** — ID bývá 196, 197, 203 atd.
-2. **MotionEvent injekce nepohybuje kurzorem** — fundamentální omezení Androidu
-3. **UHID funguje** — kernel vytvoří pointer, reporty pohybují kurzorem
-4. **`/proc/bus/input/devices` vyžaduje root** na Android 16
-5. **`/sys/class/input/*/device/name` nečitelné pro shell** — nutno použít `getevent -pl`
-6. **Nekonečná smyčka je zákeřná** — projevuje se jako "kurzor se nepohybuje" i když reporty se posílají (miliony reportů s dx=0, dy=0)
+1. **DisplayId isn't sequential** — IDs tend to be 196, 197, 203, etc.
+2. **MotionEvent injection doesn't move the cursor** — a fundamental Android limitation
+3. **UHID works** — the kernel creates a pointer, reports move the cursor
+4. **`/proc/bus/input/devices` requires root** on Android 16
+5. **`/sys/class/input/*/device/name` isn't readable by shell** — must use `getevent -pl` instead
+6. **An infinite loop is sneaky** — it shows up as "the cursor doesn't move" even though reports are being sent (millions of reports with dx=0, dy=0)
