@@ -47,14 +47,14 @@ class TouchpadView @JvmOverloads constructor(
     var naturalScrolling = true
     private val tapMaxDuration = 200L   // ms
     private val tapMaxDistance = 30f     // px
-    private val moveDeadzone = 3f        // px, raw finger jitter filter before cursor moves
+    private val moveDeadzone = 1.5f      // px, raw finger jitter filter before cursor moves
     private val dragHoldTime = 250L     // ms before a held finger counts as "hold"
     private val threeFingerSwipeThreshold = 100f // px minimum swipe
     private val pinchZoomThreshold = 30f // px change in finger distance
 
     // Cursor movement smoothing (exponential moving average) - damps sensor/touch noise
     // without adding much lag. Lower alpha = smoother but laggier, higher = snappier but noisier.
-    private val smoothingAlpha = 0.55f
+    private val smoothingAlpha = 0.4f
     private var smoothedDx = 0f
     private var smoothedDy = 0f
 
