@@ -10,7 +10,7 @@ A minimal Android app that turns a phone's display into a virtual touchpad for c
 
 ## Requirements
 
-- Android 9+ (Pixel 8 with Android 15/16 ideal)
+- Android 9+ (Pixel 8 with Android 15/16/17 ideal)
 - [Shizuku](https://github.com/RikkaApps/Shizuku/releases) installed and running
 - External display connected via USB-C
 

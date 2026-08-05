@@ -1,6 +1,6 @@
 # Tested approaches – log
 
-Device: Pixel 8 Pro, Android 16 (SDK 36), Shizuku UID 2000
+Device: Pixel 8 Pro, originally Android 16 (SDK 36), now updated to Android 17 — Shizuku UID 2000
 
 ---
 

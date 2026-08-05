@@ -2,7 +2,7 @@
 
 ## About the project
 
-**PixelTouchpad** is an Android app that turns a phone's display into a virtual touchpad for controlling the cursor on an external monitor in Android Desktop Mode. Primarily targets the Pixel 8 Pro on Android 16 (SDK 36).
+**PixelTouchpad** is an Android app that turns a phone's display into a virtual touchpad for controlling the cursor on an external monitor in Android Desktop Mode. Primarily targets the Pixel 8 Pro on Android 17 (SDK 37, following the API-level-per-major-version pattern from 15→35, 16→36 — worth double-checking against `Build.VERSION.SDK_INT` on-device if anything version-gated misbehaves).
 
 ## Architecture
 
@@ -97,6 +97,6 @@ See [BUILD.md](BUILD.md) for local build instructions (x86_64 Linux).
 
 ## User context
 - Martin, a Czech game developer (Godot, HTML games for kids)
-- Device: Pixel 8 Pro, Android 16
+- Device: Pixel 8 Pro, Android 17
 - UI language: English (this fork's UI was translated from the upstream project's Czech)
 - Goal: control desktop mode on an external monitor without a physical mouse
