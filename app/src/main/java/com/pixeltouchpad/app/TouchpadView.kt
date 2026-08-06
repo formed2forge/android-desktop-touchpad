@@ -11,6 +11,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
+import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
@@ -51,6 +52,17 @@ class TouchpadView @JvmOverloads constructor(
     private val dragHoldTime = 250L     // ms before a held finger counts as "hold"
     private val threeFingerSwipeThreshold = 100f // px minimum swipe
     private val pinchZoomThreshold = 30f // px change in finger distance
+
+    // Scroll speed acceleration - flat scrollSensitivity alone felt too fast even for slow,
+    // deliberate movement, since the small screen leaves little room between "too fine" and
+    // "flick city". Instead scale scrollSensitivity by a multiplier derived from finger speed:
+    // near scrollAccelMinMultiplier for a slow drag (fine control), ramping - gently at first,
+    // steeply near the cap thanks to gamma > 1 - up to scrollAccelMaxMultiplier for a fast flick,
+    // so a quick swipe can cover a full page without repeated strokes across this small surface.
+    private val scrollAccelMinMultiplier = 0.4f
+    private val scrollAccelMaxMultiplier = 5f
+    private val scrollAccelVelocityCap = 3.5f // px/ms - finger speed at which acceleration maxes out
+    private val scrollAccelGamma = 2f
 
     // Cursor movement smoothing (exponential moving average) - damps sensor/touch noise
     // without adding much lag. Lower alpha = smoother but laggier, higher = snappier but noisier.
@@ -93,6 +105,7 @@ class TouchpadView @JvmOverloads constructor(
     private var initialPinchDistance = 0f
     private var lastPinchDistance = 0f
     private var isPinching = false
+    private var lastScrollMoveTime = 0L
 
     // Drag-lock state (persists across touch sessions once armed - see class doc)
     private var isDragMode = false
@@ -274,6 +287,7 @@ class TouchpadView @JvmOverloads constructor(
                     isScrolling = true
                     lastScrollX = averageX(event)
                     lastScrollY = averageY(event)
+                    lastScrollMoveTime = event.eventTime
                     twoFingerTapStartTime = System.currentTimeMillis()
                     twoFingerMoved = false
                     initialPinchDistance = fingerDistance(event)
@@ -309,6 +323,8 @@ class TouchpadView @JvmOverloads constructor(
                         val currentY = averageY(event)
                         val scrollDeltaX = currentX - lastScrollX
                         val scrollDeltaY = currentY - lastScrollY
+                        val dt = (event.eventTime - lastScrollMoveTime).coerceAtLeast(1L)
+                        lastScrollMoveTime = event.eventTime
 
                         if (!isPinching && abs(distDelta) > pinchZoomThreshold) {
                             // Finger distance changed significantly → pinch zoom
@@ -331,8 +347,14 @@ class TouchpadView @JvmOverloads constructor(
                                 twoFingerMoved = true
                                 gestureLabel = "SCROLL"
                                 val sign = if (naturalScrolling) 1f else -1f
-                                val vDelta = sign * scrollDeltaY * scrollSensitivity
-                                val hDelta = sign * scrollDeltaX * scrollSensitivity
+
+                                val velocity = sqrt(scrollDeltaX * scrollDeltaX + scrollDeltaY * scrollDeltaY) / dt
+                                val t = (velocity / scrollAccelVelocityCap).coerceIn(0f, 1f)
+                                val accel = scrollAccelMinMultiplier +
+                                    (scrollAccelMaxMultiplier - scrollAccelMinMultiplier) * t.pow(scrollAccelGamma)
+
+                                val vDelta = sign * scrollDeltaY * scrollSensitivity * accel
+                                val hDelta = sign * scrollDeltaX * scrollSensitivity * accel
                                 onScroll?.invoke(cursorX, cursorY, vDelta, hDelta)
                                 recordScrollVelocitySample(vDelta, hDelta)
                             }
