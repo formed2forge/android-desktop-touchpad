@@ -15,6 +15,18 @@ android {
         versionName = "1.0"
     }
 
+    // Checked-in debug keystore (see debug.keystore in repo root) instead of the AGP default,
+    // which auto-generates a fresh random key per machine - every GitHub Actions run got a
+    // different signature, making each CI-built debug APK incompatible with the last install.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
