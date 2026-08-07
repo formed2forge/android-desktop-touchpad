@@ -42,7 +42,7 @@ class TouchpadView @JvmOverloads constructor(
 
     // --- Configuration ---
     var sensitivity = 1.5f
-    var scrollSensitivity = 0.08f
+    var scrollSensitivity = 0.07f
     var enableDragLock = true
     var endDragOnSingleTap = false // false = release ends the drag; true = persist, end on a tap
     var naturalScrolling = true
@@ -60,7 +60,7 @@ class TouchpadView @JvmOverloads constructor(
     // steeply near the cap thanks to gamma > 1 - up to scrollAccelMaxMultiplier for a fast flick,
     // so a quick swipe can cover a full page without repeated strokes across this small surface.
     private val scrollAccelMinMultiplier = 0.4f
-    private val scrollAccelMaxMultiplier = 5f
+    private val scrollAccelMaxMultiplier = 4f
     private val scrollAccelVelocityCap = 3.5f // px/ms - finger speed at which acceleration maxes out
     private val scrollAccelGamma = 2f
 
@@ -90,6 +90,8 @@ class TouchpadView @JvmOverloads constructor(
     // --- Touch tracking ---
     private var lastTouchX = 0f
     private var lastTouchY = 0f
+    private var cursorXAtGestureStart = 0f
+    private var cursorYAtGestureStart = 0f
     private var touchStartX = 0f
     private var touchStartY = 0f
     private var touchStartTime = 0L
@@ -240,6 +242,8 @@ class TouchpadView @JvmOverloads constructor(
                 gestureLabel = if (isDragMode) "DRAG" else ""
                 drawTouchX = event.x
                 drawTouchY = event.y
+                cursorXAtGestureStart = cursorX
+                cursorYAtGestureStart = cursorY
 
                 // isDragMode is NOT reset here - it persists across touch sessions while
                 // drag-locked (see class doc). Only arm a new hold-check when not already locked.
@@ -280,8 +284,22 @@ class TouchpadView @JvmOverloads constructor(
                 if (isDragMode) return true // drag-locked: only single-finger taps matter
 
                 cancelPendingHoldCheck()
+                val wasSingleFinger = activePointerCount == 1
                 activePointerCount = event.pointerCount
                 maxPointerCountInGesture = maxOf(maxPointerCountInGesture, event.pointerCount)
+
+                if (wasSingleFinger && (cursorX != cursorXAtGestureStart || cursorY != cursorYAtGestureStart)) {
+                    // A second finger just landed, turning this into a scroll/pinch/3-finger
+                    // gesture. Fingers rarely touch down in perfect sync, so the brief window
+                    // where only the first finger was down may have already been read as
+                    // single-finger cursor movement - undo that drift so the multi-finger
+                    // gesture doesn't nudge the pointer out from under the user.
+                    cursorX = cursorXAtGestureStart
+                    cursorY = cursorYAtGestureStart
+                    smoothedDx = 0f
+                    smoothedDy = 0f
+                    onCursorMove?.invoke(cursorX, cursorY)
+                }
 
                 if (activePointerCount == 2) {
                     isScrolling = true
