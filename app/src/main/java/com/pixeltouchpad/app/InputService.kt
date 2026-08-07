@@ -102,6 +102,10 @@ class InputService : IInputService.Stub() {
         private const val BTN_LEFT = 272
         private const val BTN_RIGHT = 274
         private const val SYN_REPORT = 0
+
+        // Above Android's default 500ms long-press timeout, with margin so the receiving app's
+        // own detection window (which we don't control and can't query) reliably elapses first.
+        private const val LONG_PRESS_INJECT_DURATION_MS = 600L
     }
 
     init {
@@ -470,6 +474,25 @@ class InputService : IInputService.Stub() {
             }
         } catch (e: Exception) {
             lastSendError = "rightClick: ${e.message}"
+        }
+    }
+
+    // Long-press emulation goes through a genuine touchscreen injection rather than the UHID
+    // virtual mouse: many touch-first apps in Desktop Mode only ever look at SOURCE_TOUCHSCREEN
+    // long-press timing (GestureDetector/View long-click, text-selection handles, etc.) and never
+    // handle a mouse button hold, so a UHID button-down would silently do nothing in those apps.
+    // A zero-distance "swipe" held for LONG_PRESS_INJECT_DURATION_MS is exactly a stationary touch
+    // held in place, which is what triggers that detection - the duration must clear the
+    // receiving app's long-press timeout (Android's system default is 500ms), hence the margin.
+    override fun longPress(displayId: Int, x: Float, y: Float) {
+        try {
+            val ix = x.toInt()
+            val iy = y.toInt()
+            val cmd = if (displayId > 0) "input -d $displayId touchscreen swipe $ix $iy $ix $iy $LONG_PRESS_INJECT_DURATION_MS"
+                      else "input touchscreen swipe $ix $iy $ix $iy $LONG_PRESS_INJECT_DURATION_MS"
+            execShell(cmd, LONG_PRESS_INJECT_DURATION_MS + 2000)
+        } catch (e: Exception) {
+            lastSendError = "longPress: ${e.message}"
         }
     }
 

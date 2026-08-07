@@ -87,7 +87,6 @@ private val tapMaxDistance = 30f     // max finger movement for a click (px)
 ## Known limitations
 
 - The cursor resets to the middle of the display after an app restart
-- No right mouse button (could be added as a long-press or two-finger tap)
 - Requires restarting Shizuku after a phone restart
 
 ## License

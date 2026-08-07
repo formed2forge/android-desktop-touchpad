@@ -12,6 +12,11 @@
 - 1-finger drag = cursor movement
 - 1-finger tap = left click
 - 2-finger vertical drag = scroll
+- 2-finger tap = right click (mouse BTN_RIGHT via UHID)
+- 1-finger tap-and-hold = long-press emulation via genuine touchscreen injection (`input
+  touchscreen swipe x y x y 600`), for apps that only recognize touch-based long-press and
+  ignore the virtual mouse (added because right-click/hold via the mouse silently did nothing
+  in those apps - see `longPress` in InputService.kt and TouchpadView.kt's class doc)
 
 ### UI
 - Buttons: Connect, Diagnostics, Copy, Share

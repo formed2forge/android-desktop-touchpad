@@ -193,6 +193,11 @@ class MainActivity : AppCompatActivity() {
             catch (e: Exception) { lastError = "RClick: ${e.message}" }
         }
 
+        touchpadView.onLongPress = { x, y ->
+            try { inputService?.longPress(externalDisplayId, x, y) }
+            catch (e: Exception) { lastError = "LongPress: ${e.message}" }
+        }
+
         touchpadView.onScroll = { x, y, vScroll, hScroll ->
             scrollCount++
             try { inputService?.scroll(externalDisplayId, x, y, vScroll, hScroll) }

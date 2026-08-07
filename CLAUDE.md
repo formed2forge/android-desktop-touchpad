@@ -8,7 +8,7 @@
 
 ```
 TouchpadView (UI, touch events)
-    ↓ callbacks (onCursorMove, onClick, onRightClick, onScroll, onDragStart/End, onThreeFingerSwipe, onPinchZoom)
+    ↓ callbacks (onCursorMove, onClick, onRightClick, onLongPress, onScroll, onDragStart/End, onThreeFingerSwipe, onPinchZoom)
 MainActivity (wiring, Shizuku setup, display detection, settings)
     ↓ oneway AIDL IPC
 InputService (Shizuku UserService, UID 2000 shell)
@@ -24,16 +24,18 @@ PointerController (system cursor on the display)
   - 1-finger drag = cursor movement
   - 1-finger tap = left click
   - 2-finger tap = right click
+  - 1-finger tap-and-hold = long-press emulation (genuine touchscreen injection, for apps that
+    ignore the virtual mouse entirely)
   - 2 fingers moving the same direction = scroll
   - 2-finger pinch = zoom
-  - 1 finger holds + 2nd moves = drag
+  - double-tap then hold = drag
   - 3 fingers L/R/U/D = back/recent/app drawer/notifications
 - Configurable: `sensitivity` (default 1.5), `scrollSensitivity` (default 0.08)
 - Tracks absolute cursor position (cursorX, cursorY) on the external display
 
 ### 2. InputService (`InputService.kt`)
 - Shizuku UserService – runs in a separate process with shell privileges (UID 2000)
-- AIDL methods (oneway): associateWithDisplay, setKeyboardOnInternalDisplay, moveCursor, click, rightClick, scroll, startDrag, endDrag, sendKeyEvent, sendText, sendBackspace, sendShellCommand, destroy
+- AIDL methods (oneway): associateWithDisplay, setKeyboardOnInternalDisplay, moveCursor, click, rightClick, longPress, scroll, startDrag, endDrag, sendKeyEvent, sendText, sendBackspace, sendShellCommand, destroy
 - AIDL methods (synchronous): diagnose
 - Strategy: UHID > sendevent > shell input (fallback)
 - UHID report: buttons(1) + X(1) + Y(1) + wheel(1) + hwheel/AC Pan(1) = 5 bytes
@@ -59,6 +61,7 @@ PointerController (system cursor on the display)
 | 1-finger drag | cursor movement (smoothed) | moveCursor | UHID REL_X/Y |
 | 1-finger tap | left click | click | UHID BTN_LEFT |
 | 2-finger tap | right click | rightClick | UHID BTN_RIGHT (bit 1 = 0x02) |
+| 1-finger tap-and-hold (not the 2nd tap of a double-tap) | long-press emulation | longPress | `input touchscreen swipe x y x y 600` (stationary touch, not a mouse event) |
 | 2 fingers same direction | scroll, natural direction, with momentum after lift | scroll | UHID REL_WHEEL + AC Pan (horizontal) |
 | 2-finger pinch | zoom | — | Ctrl+scroll (TBD) |
 | double-tap then hold; release to end by default, or a single tap to end (toggle in Settings, see `enableDragLock`/`endDragOnSingleTap`) | drag | startDrag/endDrag | UHID button=1 hold; persists across touch sessions only in single-tap-to-end mode |

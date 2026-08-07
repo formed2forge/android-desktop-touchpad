@@ -30,6 +30,12 @@ import kotlin.math.sqrt
  *   click-and-drag feel). With [endDragOnSingleTap] on, it instead persists across lift/re-
  *   touch - move by touching and moving again, no need to hold continuously - until ended by a
  *   single tap.
+ * - single-finger tap-and-hold (not the second tap of a double-tap - that's the drag gesture
+ *   above): long-press emulation. Fires a genuine touchscreen long-press on the external
+ *   display rather than a mouse action, for apps that only recognize touch-based long-press
+ *   (context menus, text selection) and ignore the virtual mouse entirely. Deliberately has no
+ *   drag follow-through - the cursor stops responding to movement for the rest of that touch
+ *   once the long-press has fired, so it doesn't fight whatever the long-press opened.
  * - 3 finger swipe L/R/U/D: back / recent / app drawer / notifications
  */
 class TouchpadView @JvmOverloads constructor(
@@ -50,6 +56,7 @@ class TouchpadView @JvmOverloads constructor(
     private val tapMaxDistance = 30f     // px
     private val moveDeadzone = 1.5f      // px, raw finger jitter filter before cursor moves
     private val dragHoldTime = 250L     // ms before a held finger counts as "hold"
+    private val longPressHoldTime = 400L // ms before a single-finger hold fires long-press emulation
     private val threeFingerSwipeThreshold = 100f // px minimum swipe
     private val pinchZoomThreshold = 30f // px change in finger distance
 
@@ -118,6 +125,10 @@ class TouchpadView @JvmOverloads constructor(
     private val holdHandler = Handler(Looper.getMainLooper())
     private var pendingHoldCheck: Runnable? = null
 
+    // Long-press emulation state (independent of drag-lock above)
+    private var pendingLongPressCheck: Runnable? = null
+    private var longPressFired = false
+
     // Three-finger state
     private var isThreeFingerGesture = false
     private var threeFingerStartX = 0f
@@ -133,6 +144,7 @@ class TouchpadView @JvmOverloads constructor(
     var onPinchZoom: ((zoomDelta: Float) -> Unit)? = null
     var onDragStart: (() -> Unit)? = null
     var onDragEnd: (() -> Unit)? = null
+    var onLongPress: ((x: Float, y: Float) -> Unit)? = null
     var onThreeFingerSwipe: ((direction: SwipeDirection) -> Unit)? = null
 
     // --- Drawing ---
@@ -176,6 +188,30 @@ class TouchpadView @JvmOverloads constructor(
     private fun cancelPendingHoldCheck() {
         pendingHoldCheck?.let { holdHandler.removeCallbacks(it) }
         pendingHoldCheck = null
+    }
+
+    private fun cancelPendingLongPressCheck() {
+        pendingLongPressCheck?.let { holdHandler.removeCallbacks(it) }
+        pendingLongPressCheck = null
+    }
+
+    private fun armLongPressCheck(armX: Float, armY: Float) {
+        val check = Runnable {
+            if (activePointerCount == 1 && !isDragMode) {
+                val d = sqrt(
+                    (lastTouchX - armX).let { it * it } +
+                    (lastTouchY - armY).let { it * it }
+                )
+                if (d < tapMaxDistance) {
+                    longPressFired = true
+                    gestureLabel = "LONG PRESS"
+                    onLongPress?.invoke(cursorX, cursorY)
+                    invalidate()
+                }
+            }
+        }
+        pendingLongPressCheck = check
+        holdHandler.postDelayed(check, longPressHoldTime)
     }
 
     private fun cancelMomentum() {
@@ -225,6 +261,7 @@ class TouchpadView @JvmOverloads constructor(
 
             MotionEvent.ACTION_DOWN -> {
                 cancelPendingHoldCheck()
+                cancelPendingLongPressCheck()
                 cancelMomentum()
                 lastTouchX = event.x
                 lastTouchY = event.y
@@ -237,6 +274,7 @@ class TouchpadView @JvmOverloads constructor(
                 isThreeFingerGesture = false
                 isPinching = false
                 twoFingerMoved = false
+                longPressFired = false
                 smoothedDx = 0f
                 smoothedDy = 0f
                 gestureLabel = if (isDragMode) "DRAG" else ""
@@ -247,12 +285,16 @@ class TouchpadView @JvmOverloads constructor(
 
                 // isDragMode is NOT reset here - it persists across touch sessions while
                 // drag-locked (see class doc). Only arm a new hold-check when not already locked.
-                if (enableDragLock && !isDragMode) {
-                    val dist = sqrt(
-                        (event.x - lastQuickTapX).let { it * it } +
-                        (event.y - lastQuickTapY).let { it * it }
-                    )
-                    if (touchStartTime - lastQuickTapTime < doubleTapWindow && dist < tapMaxDistance) {
+                if (!isDragMode) {
+                    val isDoubleTapContinuation = enableDragLock && run {
+                        val dist = sqrt(
+                            (event.x - lastQuickTapX).let { it * it } +
+                            (event.y - lastQuickTapY).let { it * it }
+                        )
+                        touchStartTime - lastQuickTapTime < doubleTapWindow && dist < tapMaxDistance
+                    }
+
+                    if (isDoubleTapContinuation) {
                         // Second touch of a potential double-tap: arm a delayed check. If this
                         // same finger stays roughly still past dragHoldTime, engage drag lock.
                         val armX = event.x
@@ -274,6 +316,12 @@ class TouchpadView @JvmOverloads constructor(
                         }
                         pendingHoldCheck = check
                         holdHandler.postDelayed(check, dragHoldTime)
+                    } else {
+                        // Not the second tap of a double-tap: this could be an ordinary tap, a
+                        // drag of the cursor, or a single-finger hold - arm long-press emulation,
+                        // which the check below discards if the finger moved or a 2nd finger
+                        // joined before longPressHoldTime elapsed.
+                        armLongPressCheck(event.x, event.y)
                     }
                 }
 
@@ -284,6 +332,7 @@ class TouchpadView @JvmOverloads constructor(
                 if (isDragMode) return true // drag-locked: only single-finger taps matter
 
                 cancelPendingHoldCheck()
+                cancelPendingLongPressCheck() // a 2nd finger means this isn't a single-finger hold
                 val wasSingleFinger = activePointerCount == 1
                 activePointerCount = event.pointerCount
                 maxPointerCountInGesture = maxOf(maxPointerCountInGesture, event.pointerCount)
@@ -379,10 +428,12 @@ class TouchpadView @JvmOverloads constructor(
                         }
                     }
 
-                    !isScrolling && !isThreeFingerGesture && event.pointerCount == 1 -> {
+                    !isScrolling && !isThreeFingerGesture && !longPressFired && event.pointerCount == 1 -> {
                         // Single-finger cursor movement - same path whether or not drag-locked;
                         // button-hold is handled server-side based on drag state, orthogonal to
-                        // how the cursor itself moves.
+                        // how the cursor itself moves. Once a long-press has fired for this
+                        // gesture, the cursor deliberately stops moving (see class doc) so it
+                        // doesn't fight whatever the long-press opened.
                         //
                         // The deadzone gates lastTouchX/Y itself (not just whether we apply the
                         // result), so a run of tiny samples - a slow, precise roll - keeps
@@ -463,6 +514,11 @@ class TouchpadView @JvmOverloads constructor(
                         }
                     }
 
+                    longPressFired -> {
+                        // Already dispatched by armLongPressCheck when the hold timer fired -
+                        // nothing left to do on release.
+                    }
+
                     maxPointerCountInGesture == 2 && !twoFingerMoved && !isPinching -> {
                         // Two-finger tap = right click
                         val twoFingerElapsed = System.currentTimeMillis() - twoFingerTapStartTime
@@ -486,11 +542,13 @@ class TouchpadView @JvmOverloads constructor(
 
                 // Reset gesture state - isDragMode is intentionally left untouched (see above)
                 cancelPendingHoldCheck()
+                cancelPendingLongPressCheck()
                 activePointerCount = 0
                 maxPointerCountInGesture = 0
                 isScrolling = false
                 isThreeFingerGesture = false
                 isPinching = false
+                longPressFired = false
                 gestureLabel = if (isDragMode) "DRAG" else ""
                 drawTouchX = -1f
                 drawTouchY = -1f
@@ -502,6 +560,7 @@ class TouchpadView @JvmOverloads constructor(
                 // aborted/taken over by the system rather than a normal user release, so there's
                 // no guarantee a matching end-double-tap will ever arrive.
                 cancelPendingHoldCheck()
+                cancelPendingLongPressCheck()
                 if (isDragMode) onDragEnd?.invoke()
                 isDragMode = false
                 activePointerCount = 0
@@ -509,6 +568,7 @@ class TouchpadView @JvmOverloads constructor(
                 isScrolling = false
                 isThreeFingerGesture = false
                 isPinching = false
+                longPressFired = false
                 gestureLabel = ""
                 drawTouchX = -1f
                 drawTouchY = -1f
